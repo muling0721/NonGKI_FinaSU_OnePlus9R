@@ -291,6 +291,111 @@ def uaccess_h():
     patch_file(path, [(anchor, block)])
 
 
+def finasu_selinux():
+    # 4.19 exposes struct selinux_policy as struct selinux_ss, keeps the
+    # status page/lock inside it, and has no per-state policy mutex.
+    kbuild = "FinaSU/kernel/Kbuild"
+    data = read(kbuild)
+    if "-Dselinux_policy=selinux_ss" not in data:
+        anchor = "ccflags-y += -I$(KSU_KERNEL_DIR) -I$(KSU_KERNEL_DIR)/include"
+        if anchor not in data:
+            raise SystemExit("[compat] Kbuild include anchor not found")
+        data = data.replace(anchor, anchor + "\nccflags-y += -Dselinux_policy=selinux_ss", 1)
+        write(kbuild, data)
+        print(f"[compat] patched {kbuild}")
+    else:
+        print(f"[compat] {kbuild} already patched")
+
+    header = "FinaSU/kernel/selinux/sepolicy.h"
+    data = read(header)
+    if "ksu_policy_mutex" not in data:
+        data = data.replace(
+            "#include <linux/types.h>",
+            "#include <linux/types.h>\n#include <linux/mutex.h>",
+            1,
+        )
+        data = data.replace(
+            "struct selinux_policy *ksu_dup_sepolicy",
+            "extern struct mutex ksu_policy_mutex;\n\nstruct selinux_policy *ksu_dup_sepolicy",
+            1,
+        )
+        write(header, data)
+        print(f"[compat] patched {header}")
+    else:
+        print(f"[compat] {header} already patched")
+
+    sepolicy = "FinaSU/kernel/selinux/sepolicy.c"
+    data = read(sepolicy)
+    if "DEFINE_MUTEX(ksu_policy_mutex)" not in data:
+        anchor = "#define KSU_SUPPORT_ADD_TYPE"
+        if anchor not in data:
+            raise SystemExit("[compat] sepolicy.c anchor not found")
+        data = data.replace(anchor, "DEFINE_MUTEX(ksu_policy_mutex);\n\n" + anchor, 1)
+        write(sepolicy, data)
+        print(f"[compat] patched {sepolicy}")
+    else:
+        print(f"[compat] {sepolicy} already patched")
+
+    import re
+
+    for path in ("FinaSU/kernel/feature/selinux_hide.c", "FinaSU/kernel/selinux/rules.c"):
+        data = read(path)
+        original = data
+        data = data.replace("selinux_state.policy_mutex", "ksu_policy_mutex")
+        data = data.replace("selinux_state.status_lock", "selinux_state.ss->status_lock")
+        data = data.replace("selinux_state.status_page", "selinux_state.ss->status_page")
+        data = re.sub(r"selinux_state\.policy\b", "selinux_state.ss", data)
+        if data != original:
+            write(path, data)
+            print(f"[compat] patched {path} (selinux state)")
+        else:
+            print(f"[compat] {path} already patched")
+
+
+def finasu_selinux_sidtab():
+    # The 5.x sidtab string cache has no counterpart in 4.19.
+    path = "FinaSU/kernel/feature/selinux_hide.c"
+    data = read(path)
+    if "sidtab_sid2str_get" not in data:
+        print(f"[compat] {path} already patched (sidtab)")
+        return
+    start = data.index("static int sidtab_entry_to_string(")
+    end = data.index("static void avd_init(struct selinux_policy *policy, struct av_decision *avd)")
+    old = data[start:end].rstrip()
+    compat = (
+        "static int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid,\n"
+        "                                               char **scontext, u32 *scontext_len)\n"
+        "{\n"
+        "    struct policydb *policydb = &policy->policydb;\n"
+        "    struct context *context;\n"
+        "    int rc;\n"
+        "\n"
+        "    if (scontext)\n"
+        "        *scontext = NULL;\n"
+        "    *scontext_len = 0;\n"
+        "\n"
+        "    context = sidtab_search(policy->sidtab, sid);\n"
+        "    if (!context) {\n"
+        "        pr_err(\"SELinux: %s: unrecognized SID %d\\n\", __func__, sid);\n"
+        "        return -EINVAL;\n"
+        "    }\n"
+        "\n"
+        "    rc = context_struct_to_string(policydb, context, scontext, scontext_len);\n"
+        "    return rc;\n"
+        "}"
+    )
+    new = (
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)\n"
+        + old
+        + "\n#else\n"
+        + compat
+        + "\n#endif\n\n"
+    )
+    data = data[:start] + new + data[end:]
+    write(path, data)
+    print(f"[compat] patched {path} (sidtab)")
+
+
 def main():
     if not read("Makefile").startswith("# SPDX"):
         print("[compat] not in a kernel source tree", file=sys.stderr)
@@ -301,6 +406,8 @@ def main():
     path_umount()
     path_mount_compat()
     finasu_includes()
+    finasu_selinux()
+    finasu_selinux_sidtab()
     task_work_h()
     finasu_seccomp_cache()
     finasu_patch_memory()
