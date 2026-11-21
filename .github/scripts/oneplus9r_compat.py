@@ -396,6 +396,75 @@ def finasu_selinux_sidtab():
     print(f"[compat] patched {path} (sidtab)")
 
 
+def finasu_file_wrapper():
+    path = "FinaSU/kernel/infra/file_wrapper.c"
+    data = read(path)
+    original = data
+
+    if "ksu_wrapper_iopoll" in data and "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)\n#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)" not in data:
+        start = data.index("#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)\nstatic int ksu_wrapper_iopoll")
+        end = data.index("#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)\nstatic int ksu_wrapper_iterate")
+        block = data[start:end].rstrip()
+        data = data[:start] + "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)\n" + block + "\n#endif\n\n" + data[end:]
+
+    data = data.replace(
+        "    p->ops.iopoll = fp->f_op->iopoll ? ksu_wrapper_iopoll : NULL;",
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)\n"
+        "    p->ops.iopoll = fp->f_op->iopoll ? ksu_wrapper_iopoll : NULL;\n"
+        "#endif",
+    )
+
+    if "ksu_wrapper_dedupe_file_range" not in data:
+        start = data.index("static loff_t ksu_wrapper_remap_file_range(")
+        end = data.index("static int ksu_wrapper_fadvise(")
+        block = data[start:end].rstrip()
+        compat = (
+            "static int ksu_wrapper_dedupe_file_range(struct file *file_in, loff_t pos_in, struct file *file_out,\n"
+            "                                         loff_t pos_out, u64 len)\n"
+            "{\n"
+            "    struct ksu_file_wrapper *data = file_out->private_data;\n"
+            "    struct file *orig = data->orig;\n"
+            "\n"
+            "    if (!orig->f_op->dedupe_file_range)\n"
+            "        return -EINVAL;\n"
+            "    return orig->f_op->dedupe_file_range(file_in, pos_in, orig, pos_out, len);\n"
+            "}"
+        )
+        data = (
+            data[:start]
+            + "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)\n"
+            + block
+            + "\n#else\n"
+            + compat
+            + "\n#endif\n\n"
+            + data[end:]
+        )
+
+    data = data.replace(
+        "    p->ops.remap_file_range = fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;",
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)\n"
+        "    p->ops.remap_file_range = fp->f_op->remap_file_range ? ksu_wrapper_remap_file_range : NULL;\n"
+        "#else\n"
+        "    p->ops.dedupe_file_range = fp->f_op->dedupe_file_range ? ksu_wrapper_dedupe_file_range : NULL;\n"
+        "#endif",
+    )
+
+    data = data.replace(
+        "    error = security_inode_init_security_anon(inode, &qname, context_inode);",
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 13, 0)\n"
+        "    error = security_inode_init_security_anon(inode, &qname, context_inode);\n"
+        "#else\n"
+        "    error = 0;\n"
+        "#endif",
+    )
+
+    if data != original:
+        write(path, data)
+        print(f"[compat] patched {path}")
+    else:
+        print(f"[compat] {path} already patched")
+
+
 def main():
     if not read("Makefile").startswith("# SPDX"):
         print("[compat] not in a kernel source tree", file=sys.stderr)
@@ -408,6 +477,7 @@ def main():
     finasu_includes()
     finasu_selinux()
     finasu_selinux_sidtab()
+    finasu_file_wrapper()
     task_work_h()
     finasu_seccomp_cache()
     finasu_patch_memory()
