@@ -6,6 +6,9 @@ All edits are idempotent and fail loudly when an anchor is missing, so a
 FinaSU version bump cannot silently produce a broken kernel.
 """
 
+from pathlib import Path
+import argparse
+import subprocess
 import sys
 
 
@@ -386,18 +389,6 @@ def finasu_selinux():
     else:
         print(f"[compat] {header} already patched")
 
-    sepolicy = "FinaSU/kernel/selinux/sepolicy.c"
-    data = read(sepolicy)
-    if "DEFINE_MUTEX(ksu_policy_mutex)" not in data:
-        anchor = "#define KSU_SUPPORT_ADD_TYPE"
-        if anchor not in data:
-            raise SystemExit("[compat] sepolicy.c anchor not found")
-        data = data.replace(anchor, "DEFINE_MUTEX(ksu_policy_mutex);\n\n" + anchor, 1)
-        write(sepolicy, data)
-        print(f"[compat] patched {sepolicy}")
-    else:
-        print(f"[compat] {sepolicy} already patched")
-
     import re
 
     for path in ("FinaSU/kernel/feature/selinux_hide.c", "FinaSU/kernel/selinux/rules.c"):
@@ -418,7 +409,7 @@ def finasu_selinux_sidtab():
     # The 5.x sidtab string cache has no counterpart in 4.19.
     path = "FinaSU/kernel/feature/selinux_hide.c"
     data = read(path)
-    if "sidtab_sid2str_get" not in data:
+    if "context = sidtab_search(policy->sidtab, sid);" in data:
         print(f"[compat] {path} already patched (sidtab)")
         return
     start = data.index("static int sidtab_entry_to_string(")
@@ -576,7 +567,20 @@ def finasu_pkg_observer():
     patch_file(path, [(old, new)])
 
 
+def apply_selinux_419_patch(patches):
+    diff = (patches / "OnePlus9R/finasu_selinux_419.patch").read_bytes()
+    check = ["git", "apply", "--check"]
+    if subprocess.run(check + ["--reverse"], input=diff, capture_output=True).returncode == 0:
+        print("[compat] FinaSU SELinux 4.19 patch already applied")
+        return
+    subprocess.run(["git", "apply"], input=diff, check=True)
+    print("[compat] applied FinaSU SELinux 4.19 patch")
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--patches", type=Path, default=Path(__file__).resolve().parents[2] / "Patches")
+    args = parser.parse_args()
     if not read("Makefile").startswith("# SPDX"):
         print("[compat] not in a kernel source tree", file=sys.stderr)
         return 1
@@ -588,6 +592,7 @@ def main():
     finasu_includes()
     finasu_selinux()
     finasu_selinux_sidtab()
+    apply_selinux_419_patch(args.patches)
     finasu_file_wrapper()
     finasu_pkg_observer()
     task_work_h()

@@ -142,9 +142,8 @@ jobs:
           # this kernel (oplus mount guard block, missing susfs_def include).
           patch -p1 --batch < /tmp/Patches/OnePlus9R/susfs_fixed.patch
 
-          # 4.19 compatibility: susfs_def include, MODULE_IMPORT_NS,
-          # path_umount backport and FinaSU patch_memory fixes.
-          python3 $GITHUB_WORKSPACE/.github/scripts/oneplus9r_compat.py
+          # Apply the OnePlus 9R-specific 4.19 compatibility adapters.
+          python3 "$GITHUB_WORKSPACE/.github/scripts/oneplus9r_compat.py" --patches /tmp/Patches
 
           if find . -name "*.rej" | grep -q .; then
             echo "[-] SUSFS fix patch left rejected hunks."
