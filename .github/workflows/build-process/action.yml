@@ -35,6 +35,13 @@ runs:
         run: |
           cd $GITHUB_WORKSPACE/device_kernel/
 
+          # Keep independent build targets running after errors in diagnostics mode.
+          # Bash's pipefail still propagates make's nonzero exit code.
+          make_mode=()
+          if [[ "$BUILD_KEEP_GOING" == 'true' ]]; then
+            make_mode+=(-k)
+          fi
+
           # Function
           BUILD_PROCESS(){
           if [ -n "$1" ]; then
@@ -125,7 +132,11 @@ runs:
                 echo "[+] Pre-built SELinux done."
             fi
 
-            make -j$(nproc --all) CC="ccache clang" ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} O=out ARCH="${{ env.KERNEL_ARCH }}" 2>&1|tee error.log
+            local diagnostic_flags=()
+            if [[ "$BUILD_KEEP_GOING" == 'true' ]]; then
+                diagnostic_flags+=("CFLAGS_KERNEL=-ferror-limit=0")
+            fi
+            make "${make_mode[@]}" -j$(nproc --all) CC="ccache clang" ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} O=out ARCH="${{ env.KERNEL_ARCH }}" "${diagnostic_flags[@]}" 2>&1|tee error.log
           else
             echo "===================="
             echo "=Execuate GCC Build="
@@ -136,7 +147,7 @@ runs:
                 echo "[+] Pre-built SELinux done."
             fi
 
-            make -j$(nproc --all) O=out ARCH="${{ env.KERNEL_ARCH }}" 2>&1|tee error.log
+            make "${make_mode[@]}" -j$(nproc --all) O=out ARCH="${{ env.KERNEL_ARCH }}" 2>&1|tee error.log
           fi
           }
 

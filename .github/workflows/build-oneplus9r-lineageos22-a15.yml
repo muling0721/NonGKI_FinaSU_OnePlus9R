@@ -11,6 +11,11 @@ on:
         required: false
         type: boolean
         default: false
+      diagnostics:
+        description: 'Collect more compiler errors; do not package or publish'
+        required: false
+        type: boolean
+        default: false
 
   schedule:
     - cron: '0 18 * * 5'
@@ -111,6 +116,7 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
+      BUILD_KEEP_GOING: ${{ inputs.diagnostics && 'true' || 'false' }}
 
     steps:
       - name: ⏰ Checkout repository
@@ -174,6 +180,7 @@ jobs:
         uses: ./.github/workflows/build-process
 
       - name: Verify kernel configuration
+        if: ${{ !inputs.diagnostics }}
         working-directory: device_kernel
         run: |
           kernel_release=$(<out/include/config/kernel.release)
@@ -190,12 +197,15 @@ jobs:
           printf 'Kernel release: `%s`\n' "$kernel_release" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 🔩 Pack Process
+        if: ${{ !inputs.diagnostics }}
         uses: ./.github/workflows/pack-process
 
       - name: ✏️ Upload Artifacts
+        if: ${{ !inputs.diagnostics }}
         uses: ./.github/workflows/upload-files
 
       - name: 📦 Upload FinaSU Manager
+        if: ${{ !inputs.diagnostics }}
         uses: actions/upload-artifact@v7
         with:
           path: |
@@ -203,7 +213,7 @@ jobs:
           archive: false
 
       - name: 🚀 Publish Release
-        if: github.event_name == 'workflow_dispatch' && inputs.release
+        if: github.event_name == 'workflow_dispatch' && inputs.release && !inputs.diagnostics
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "OnePlus9R-FinaSU-${{ github.run_number }}"
