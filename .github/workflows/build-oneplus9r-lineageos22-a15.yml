@@ -10,7 +10,7 @@ on:
         description: 'Create a GitHub Release after build'
         required: false
         type: boolean
-        default: true
+        default: false
 
   schedule:
     - cron: '0 18 * * 5'
@@ -173,6 +173,22 @@ jobs:
       - name: 🚀 Build Process
         uses: ./.github/workflows/build-process
 
+      - name: Verify kernel configuration
+        working-directory: device_kernel
+        run: |
+          kernel_release=$(<out/include/config/kernel.release)
+          echo "Built kernel release: $kernel_release"
+          if [[ "$kernel_release" != '4.19.325-perf+' ]]; then
+            echo '::warning::Kernel release differs from the reported 4.19.325-perf+.'
+          fi
+          for option in CONFIG_KSU CONFIG_KSU_SUSFS CONFIG_KSU_HOOK_TRACEPOINT; do
+            if ! grep -qxF "$option=y" out/.config; then
+              echo "::error::$option is not enabled in the generated kernel config."
+              exit 1
+            fi
+          done
+          printf 'Kernel release: `%s`\n' "$kernel_release" >> "$GITHUB_STEP_SUMMARY"
+
       - name: 🔩 Pack Process
         uses: ./.github/workflows/pack-process
 
@@ -187,7 +203,7 @@ jobs:
           archive: false
 
       - name: 🚀 Publish Release
-        if: github.event_name == 'schedule' || inputs.release
+        if: github.event_name == 'workflow_dispatch' && inputs.release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "OnePlus9R-FinaSU-${{ github.run_number }}"
@@ -209,4 +225,4 @@ jobs:
           files: |
             device_kernel/${{ env.PACK_NAME }}
             manager/FinaSU-manager.apk
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true

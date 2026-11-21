@@ -12,7 +12,7 @@
 | 机型 | OnePlus 9R（`lemonades`） |
 | 内核源码 | [wcedla/android_kernel_oneplus_sm8250_los](https://github.com/wcedla/android_kernel_oneplus_sm8250_los)（`lineage-22.1`） |
 | 内核版本 | 4.19.325 |
-| 系统 | LineageOS 22.1 / Android 15（AOSP 类 4.19 kona 内核通用） |
+| 目标系统 | LineageOS 22.1 / Android 15 |
 | Root 方案 | [FinaSU](https://github.com/LyraVoid/FinaSU) `v1.6.5`（`CONFIG_KSU=y` 内置） |
 | Hook | Tracepoint |
 | SUSFS | v2.4.0 |
@@ -23,18 +23,17 @@
 
 1. Fork 或直接使用本仓库。
 2. 打开 **Actions** → **Build OnePlus 9R (LineageOS 22.1 A15)** → **Run workflow**。
-   - `release` 勾选后构建成功会自动创建 Release，并附带内核 zip 和 FinaSU 管理器。
-3. 下载 `lemonades-lineageos22_a15-*-AnyKernel3.zip`，在 Recovery / 内核管理器中刷入。
-4. 安装 Release 附带的 `FinaSU-manager.apk` 管理 Root。
+3. 构建成功后，在该次运行的 Artifacts 中下载 `lemonades-lineageos22_a15-*-AnyKernel3.zip` 和 `FinaSU-manager.apk`。仅在需要公开发布时勾选 `release`。
 
-> 也可每周五 18:00 (UTC) 自动构建（见 workflow 中的 `schedule`）。
+所有构建都在 GitHub Actions（`ubuntu-24.04`）上运行。每周五 18:00 (UTC) 定时构建，不自动发布 Release。
 
 ## 说明
 
 - 内核以 **Built-In（`CONFIG_KSU=y`）** 方式集成 FinaSU；管理器签名通过
   `KSU_EXPECTED_SIZE2 / KSU_EXPECTED_HASH2 / KSU_SECOND_SIGNATURE_RELEASE=1`
   与 Release APK 的签名证书对齐（由 `finasu-manager` action 自动完成）。
-- SUSFS 使用 NonGKI_Kernel_Patches 中 `kona_cos15_a15/susfs_fixed` 作为 4.19 通用补丁的修正补丁。
+- SUSFS 使用 4.19 通用补丁及本仓库的 [`Patches/OnePlus9R/susfs_fixed.patch`](Patches/OnePlus9R/susfs_fixed.patch)。
+- AnyKernel3 安装脚本会检查设备代号 `lemonades`。构建成功不代表能开机，目前还没有实机启动验证。
 - 构建失败时会把 `.rej` 与错误日志打进 Artifact（`BUILD_DEBUGGER=true`）。
 - 刷机有风险，请先备份 boot 分区。
 

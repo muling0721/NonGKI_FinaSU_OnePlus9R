@@ -239,6 +239,10 @@ def path_mount_compat():
 
 def finasu_includes():
     patch_file(
+        "FinaSU/kernel/manager/dynamic_manager.c",
+        [("#include <linux/sched.h>", "#include <linux/sched.h>\n#include <linux/sched/task.h>")],
+    )
+    patch_file(
         "FinaSU/kernel/feature/sucompat.c",
         [("#include <linux/pgtable.h>", "#include <asm/pgtable.h>")],
     )
@@ -454,7 +458,8 @@ def finasu_file_wrapper():
         "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 13, 0)\n"
         "    error = security_inode_init_security_anon(inode, &qname, context_inode);\n"
         "#else\n"
-        "    error = 0;\n"
+        "    /* Do not create a wrapper without the required SELinux check. */\n"
+        "    error = -EOPNOTSUPP;\n"
         "#endif",
     )
 
@@ -463,24 +468,6 @@ def finasu_file_wrapper():
         print(f"[compat] patched {path}")
     else:
         print(f"[compat] {path} already patched")
-
-
-def kernel_selinux_headers():
-    # avtab_insert_nonunique() is global in 4.19 but missing from avtab.h.
-    path = "security/selinux/ss/avtab.h"
-    data = read(path)
-    if "avtab_insert_nonunique" in data:
-        print(f"[compat] {path} already patched")
-        return
-    anchor = "struct avtab_datum *avtab_search(struct avtab *h, struct avtab_key *k);"
-    if anchor not in data:
-        raise SystemExit(f"[compat] anchor not found in {path}")
-    block = (
-        anchor
-        + "\nstruct avtab_node *avtab_insert_nonunique(struct avtab *h, struct avtab_key *key,\n"
-        + "\t\t\t\t\t struct avtab_datum *datum);"
-    )
-    patch_file(path, [(anchor, block)])
 
 
 def finasu_pkg_observer():
@@ -545,7 +532,6 @@ def main():
     finasu_selinux_sidtab()
     finasu_file_wrapper()
     finasu_pkg_observer()
-    kernel_selinux_headers()
     task_work_h()
     finasu_seccomp_cache()
     finasu_patch_memory()

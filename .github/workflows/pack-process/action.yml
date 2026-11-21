@@ -15,8 +15,16 @@ runs:
           mkdir -p tmp
 
           if [[ "${{ env.AK3_SOURCE }}" =~ "osm0sis" ]]; then
-            sed -i 's/ExampleKernel by osm0sis @ xda-developers/NonGKI Kernel Build by JackAltman @ GitHub/g' AnyKernel3/anykernel.sh
-            sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
+            sed -i -e 's/^kernel\.string=.*/kernel.string=OnePlus 9R (lemonades) - LineageOS 22.1/' \
+              -e '/^# boot install$/,$d' AnyKernel3/anykernel.sh
+            # Replace the stock example's tuna-specific ramdisk edits.
+            printf '\nsplit_boot;\nflash_boot;\n' >> AnyKernel3/anykernel.sh
+            grep -qxF '. tools/ak3-core.sh;' AnyKernel3/anykernel.sh
+            sed -i -e 's/^do\.devicecheck=.*/do.devicecheck=1/' \
+              -e 's/^device\.name1=.*/device.name1=lemonades/' \
+              -e '/^device\.name[0-9]*=/{ /^device\.name1=/! s/=.*/=/; }' AnyKernel3/anykernel.sh
+            grep -qxF 'do.devicecheck=1' AnyKernel3/anykernel.sh
+            test "$(grep -E '^device\.name[^=]*=.+$' AnyKernel3/anykernel.sh)" = 'device.name1=lemonades'
             sed -i 's!BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!BLOCK=auto;!g' AnyKernel3/anykernel.sh
             sed -i 's/IS_SLOT_DEVICE=0;/IS_SLOT_DEVICE=auto;/g' AnyKernel3/anykernel.sh
 
@@ -47,6 +55,9 @@ runs:
             cp -fp $IMAGE_DIR/Image tmp
             echo "Found Image !"
 
+          else
+            echo '::error::No kernel image found for AnyKernel3.'
+            exit 1
           fi
 
           if [[ -f "$IMAGE_DIR/dtbo.img" ]]; then
