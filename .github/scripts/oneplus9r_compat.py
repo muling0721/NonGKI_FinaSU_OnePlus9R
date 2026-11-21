@@ -155,6 +155,116 @@ def finasu_patch_memory():
     patch_file(path, replacements)
 
 
+def task_work_h():
+    # task_work_add() takes a plain bool on 4.19; TWA_* came with 5.9.
+    path = "include/linux/task_work.h"
+    if "define TWA_RESUME" in read(path):
+        print(f"[compat] {path} already patched")
+        return
+    anchor = "#endif\t/* _LINUX_TASK_WORK_H */"
+    block = (
+        "#ifndef TWA_NONE\n"
+        "#define TWA_NONE false\n"
+        "#endif\n"
+        "#ifndef TWA_RESUME\n"
+        "#define TWA_RESUME true\n"
+        "#endif\n"
+        "#ifndef TWA_SIGNAL\n"
+        "#define TWA_SIGNAL true\n"
+        "#endif\n\n"
+        + anchor
+    )
+    patch_file(path, [(anchor, block)])
+
+
+def finasu_seccomp_cache():
+    # 4.19's struct seccomp_filter has neither the action cache nor the
+    # newer refcount layout. The cache only optimises __NR_reboot passthrough,
+    # so turn it into a no-op instead of writing out of bounds.
+    path = "FinaSU/kernel/infra/seccomp_cache.c"
+    data = read(path)
+    if "LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)" in data:
+        print(f"[compat] {path} already patched")
+        return
+    anchor = "struct action_cache {"
+    stub = (
+        "#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)\n"
+        "void ksu_seccomp_clear_cache(struct seccomp_filter *filter, int nr)\n"
+        "{\n"
+        "    (void)filter;\n"
+        "    (void)nr;\n"
+        "}\n"
+        "\n"
+        "void ksu_seccomp_allow_cache(struct seccomp_filter *filter, int nr)\n"
+        "{\n"
+        "    (void)filter;\n"
+        "    (void)nr;\n"
+        "}\n"
+        "#else\n\n"
+        + anchor
+    )
+    if anchor not in data:
+        raise SystemExit(f"[compat] anchor not found in {path}")
+    data = data.replace(anchor, stub, 1)
+    data = data.rstrip("\n") + "\n\n#endif /* LINUX_VERSION_CODE < 5.9.0 */\n"
+    write(path, data)
+    print(f"[compat] patched {path}")
+
+
+def path_mount_compat():
+    # FinaSU only uses path_mount() to make a mount subtree private
+    # (MS_PRIVATE | MS_REC). 4.19 has do_change_type() for that.
+    path = "fs/namespace.c"
+    data = read(path)
+    if "int path_mount(const char *dev_name" in data:
+        print(f"[compat] {path} already patched (path_mount)")
+        return
+    anchor = "int ksys_umount(char __user *name, int flags)"
+    block = (
+        "#ifdef CONFIG_KSU\n"
+        "static int do_change_type(struct path *path, int ms_flags);\n"
+        "int path_mount(const char *dev_name, struct path *path,\n"
+        "\t       const char *type_page, unsigned long flags, void *data_page)\n"
+        "{\n"
+        "\tif (flags & (MS_SHARED | MS_PRIVATE | MS_SLAVE | MS_UNBINDABLE))\n"
+        "\t\treturn do_change_type(path, flags);\n"
+        "\n"
+        "\treturn -EINVAL;\n"
+        "}\n"
+        "#endif\n\n"
+        + anchor
+    )
+    patch_file(path, [(anchor, block)])
+
+
+def finasu_includes():
+    patch_file(
+        "FinaSU/kernel/feature/sucompat.c",
+        [("#include <linux/pgtable.h>", "#include <asm/pgtable.h>")],
+    )
+    path = "FinaSU/kernel/manager/apk_sign.c"
+    data = read(path)
+    if "#include <linux/hex.h>" in data:
+        data = data.replace("#include <linux/hex.h>\n", "", 1)
+        write(path, data)
+        print(f"[compat] patched {path}")
+    else:
+        print(f"[compat] {path} already patched")
+    patch_file(
+        "FinaSU/kernel/sulog/event.c",
+        [("#include <linux/minmax.h>", "#include <linux/kernel.h>")],
+    )
+
+    path = "FinaSU/kernel/infra/su_mount_ns.c"
+    data = read(path)
+    if "#include <uapi/linux/mount.h>" in data:
+        data = data.replace("#include <uapi/linux/mount.h>\n", "", 1)
+        write(path, data)
+        print(f"[compat] patched {path}")
+    else:
+        print(f"[compat] {path} already patched")
+
+
 def main():
     if not read("Makefile").startswith("# SPDX"):
         print("[compat] not in a kernel source tree", file=sys.stderr)
@@ -162,6 +272,10 @@ def main():
     fs_stat()
     module_h()
     path_umount()
+    path_mount_compat()
+    finasu_includes()
+    task_work_h()
+    finasu_seccomp_cache()
     finasu_patch_memory()
     return 0
 
