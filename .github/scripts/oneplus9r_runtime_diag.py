@@ -49,11 +49,27 @@ atomic_t oneplus9r_diag[DIAG_COUNT] = {
 
 static int oneplus9r_diag_show(struct seq_file *m, void *unused)
 {
-    seq_puts(m, "fina_9r_diag_v1\\nnot_run=-4096\\n");
+    seq_puts(m, "fina_9r_diag_v2\\nnot_run=-4096\\n");
 """ + "".join(
     f'    seq_printf(m, "{name}=%d\\n", atomic_read(&oneplus9r_diag[DIAG_{key}]));\n'
     for key, name in STAGES.items()
 ) + """    return 0;
+}
+
+/* On ROMs where SELinux denies shell access to /proc/fina_9r_diag,
+ * dumpstate can still capture these snapshots in its dmesg section. */
+static void oneplus9r_diag_log(struct work_struct *work);
+static DECLARE_DELAYED_WORK(oneplus9r_diag_work, oneplus9r_diag_log);
+
+static void oneplus9r_diag_log(struct work_struct *work)
+{
+    static unsigned int sample;
+
+    pr_warn("fina_9r_diag_v2 sample=%u not_run=-4096 "
+""" + "".join(f'            "{name}=%d "\n' for name in STAGES.values()) + """            "\\n", ++sample,
+""" + ",\n".join(f"            atomic_read(&oneplus9r_diag[DIAG_{key}])" for key in STAGES) + """);
+    if (sample < 20)
+        schedule_delayed_work(&oneplus9r_diag_work, 30 * HZ);
 }
 """
 
@@ -62,8 +78,11 @@ EDITS = {
         ('#include "preinit/preinit.h"', '#include "preinit/preinit.h"\n' + PROC_CODE.rstrip()),
         ("int __init kernelsu_init(void)\n{\n    int ret;", "int __init kernelsu_init(void)\n{\n    int ret;\n\n"
          "    oneplus9r_diag_set(DIAG_INIT, 1);\n"
+         "    schedule_delayed_work(&oneplus9r_diag_work, 30 * HZ);\n"
          '    if (!proc_create_single("fina_9r_diag", 0444, NULL, oneplus9r_diag_show))\n'
          '        pr_warn("could not create OnePlus 9R diagnostic status\\n");'),
+        ("void __exit kernelsu_exit(void)\n{", "void __exit kernelsu_exit(void)\n{\n"
+         "    cancel_delayed_work_sync(&oneplus9r_diag_work);"),
         ("    ret = ksu_selinux_inode_init();", "    ret = ksu_selinux_inode_init();\n    oneplus9r_diag_set(DIAG_SELINUX, ret);"),
         ("    ret = ksu_syscall_hook_init();", "    ret = ksu_syscall_hook_init();\n    oneplus9r_diag_set(DIAG_DISPATCHER, ret);"),
         ("        ret = ksu_syscall_hook_manager_init();\n        if (!ret)",
