@@ -21,7 +21,7 @@ env:
   DEVICE_CODENAME : "lemonades"
 
   CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
-  EXTRA_CMDS : "BRAND_SHOW_FLAG=oneplus LD=ld.lld LLVM=1 LLVM_IAS=1"
+  EXTRA_CMDS : "BRAND_SHOW_FLAG=oneplus LD=ld.lld LLVM=1 LLVM_IAS=1 KCFLAGS=-Wno-strict-prototypes"
 
   KERNEL_SOURCE : "https://github.com/wcedla/android_kernel_oneplus_sm8250_los.git"
   KERNEL_BRANCH : "lineage-22.1"
@@ -50,7 +50,7 @@ env:
   KERNELSU_AUTO_FORK : "bakasu"
 
   SUSFS_ENABLE : true
-  SUSFS_FIXED : true
+  SUSFS_FIXED : false
 
   AK3_SOURCE : "https://github.com/osm0sis/AnyKernel3.git"
   AK3_BRANCH : "master"
@@ -70,11 +70,11 @@ env:
 
   KERNELSU_METHOD: "shell"
 
-  PATCHES_SOURCE: "JackA1ltman/NonGKI_Kernel_Patches"
-  PATCHES_BRANCH: "op_kernel"
+  PATCHES_SOURCE: ""
+  PATCHES_BRANCH: ""
 
-  SUSFS_FOLDER_FIXED: "kona_cos15_a15"
-  SUSFS_PATCH_FIXED: "susfs_fixed"
+  SUSFS_FOLDER_FIXED: ""
+  SUSFS_PATCH_FIXED: ""
 
   REKERNEL_ENABLE: "false"
   DROIDSPACES_ENABLE: "false"
@@ -96,7 +96,7 @@ env:
   GENERATE_CHIP: "qcom"
 
   BUILD_DEBUGGER: "true"
-  SKIP_PATCH: "false"
+  SKIP_PATCH: "true"
 
   BUILD_OTHER_CONFIG: "false"
   MERGE_CONFIG_FILES: ""
@@ -127,6 +127,20 @@ jobs:
 
       - name: 🪝 Patch Kernel of SUSFS
         uses: ./.github/workflows/patch-susfs
+
+      - name: 🩹 Apply OnePlus 9R SUSFS fixes
+        run: |
+          cd $GITHUB_WORKSPACE/device_kernel
+
+          # Fix the hunks that the generic 4.19 SUSFS patch cannot handle on
+          # this kernel (oplus mount guard block, missing susfs_def include).
+          patch -p1 --batch < $GITHUB_WORKSPACE/Patches/OnePlus9R/susfs_fixed.patch
+
+          if find . -name "*.rej" | grep -q .; then
+            echo "[-] SUSFS fix patch left rejected hunks."
+            find . -name "*.rej" -exec cat {} \;
+            false
+          fi
 
       - name: 🪛 Extra Kernel Options
         run: |
