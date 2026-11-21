@@ -265,12 +265,39 @@ def finasu_includes():
         print(f"[compat] {path} already patched")
 
 
+def uaccess_h():
+    # Kernels before 5.8 only provide the probe_*() nofault helpers.
+    path = "include/linux/uaccess.h"
+    if "define copy_from_kernel_nofault" in read(path):
+        print(f"[compat] {path} already patched")
+        return
+    anchor = "#endif\t\t/* __LINUX_UACCESS_H__ */"
+    block = (
+        "#ifndef strncpy_from_user_nofault\n"
+        "#define strncpy_from_user_nofault(dst, src, count) \\\n"
+        "\tstrncpy_from_unsafe_user(dst, src, count)\n"
+        "#endif\n"
+        "#ifndef copy_from_user_nofault\n"
+        "#define copy_from_user_nofault(dst, src, size) probe_user_read(dst, src, size)\n"
+        "#endif\n"
+        "#ifndef copy_to_user_nofault\n"
+        "#define copy_to_user_nofault(dst, src, size) probe_user_write(dst, src, size)\n"
+        "#endif\n"
+        "#ifndef copy_from_kernel_nofault\n"
+        "#define copy_from_kernel_nofault(dst, src, size) probe_kernel_read(dst, src, size)\n"
+        "#endif\n\n"
+        + anchor
+    )
+    patch_file(path, [(anchor, block)])
+
+
 def main():
     if not read("Makefile").startswith("# SPDX"):
         print("[compat] not in a kernel source tree", file=sys.stderr)
         return 1
     fs_stat()
     module_h()
+    uaccess_h()
     path_umount()
     path_mount_compat()
     finasu_includes()
