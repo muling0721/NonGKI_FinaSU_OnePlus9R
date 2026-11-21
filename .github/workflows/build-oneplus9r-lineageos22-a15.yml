@@ -134,7 +134,7 @@ jobs:
 
           # Fix the hunks that the generic 4.19 SUSFS patch cannot handle on
           # this kernel (oplus mount guard block, missing susfs_def include).
-          patch -p1 --batch < $GITHUB_WORKSPACE/Patches/OnePlus9R/susfs_fixed.patch
+          patch -p1 --batch < /tmp/Patches/OnePlus9R/susfs_fixed.patch
 
           if find . -name "*.rej" | grep -q .; then
             echo "[-] SUSFS fix patch left rejected hunks."
