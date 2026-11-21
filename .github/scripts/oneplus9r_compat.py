@@ -211,6 +211,30 @@ def finasu_seccomp_cache():
     print(f"[compat] patched {path}")
 
 
+def finasu_seccomp_profile():
+    # This 4.19 tree has no filter_count and releases task filter references
+    # with put_seccomp_filter(). Leave the newer kernel branch unchanged.
+    patch_file(
+        "FinaSU/kernel/policy/app_profile.c",
+        [
+            (
+                "    atomic_set(&current->seccomp.filter_count, 0);",
+                "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0)\n"
+                "    atomic_set(&current->seccomp.filter_count, 0);\n"
+                "#endif",
+            ),
+            (
+                "    seccomp_filter_release(fake);",
+                "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0)\n"
+                "    seccomp_filter_release(fake);\n"
+                "#else\n"
+                "    put_seccomp_filter(fake);\n"
+                "#endif",
+            ),
+        ],
+    )
+
+
 def path_mount_compat():
     # FinaSU only uses path_mount() to make a mount subtree private
     # (MS_PRIVATE | MS_REC). 4.19 has do_change_type() for that.
@@ -541,6 +565,7 @@ def main():
     finasu_pkg_observer()
     task_work_h()
     finasu_seccomp_cache()
+    finasu_seccomp_profile()
     finasu_patch_memory()
     return 0
 
