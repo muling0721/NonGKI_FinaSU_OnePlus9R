@@ -243,6 +243,13 @@ def finasu_includes():
         [("#include <linux/sched.h>", "#include <linux/sched.h>\n#include <linux/sched/task.h>")],
     )
     patch_file(
+        "FinaSU/kernel/policy/allowlist.c",
+        [
+            ("#include <linux/task_work.h>", "#include <linux/sched/task.h>\n#include <linux/task_work.h>"),
+            ("        fallthrough;\n", "        __attribute__((__fallthrough__));\n"),
+        ],
+    )
+    patch_file(
         "FinaSU/kernel/feature/sucompat.c",
         [("#include <linux/pgtable.h>", "#include <asm/pgtable.h>")],
     )
