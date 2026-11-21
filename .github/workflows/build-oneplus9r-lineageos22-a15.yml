@@ -136,6 +136,19 @@ jobs:
           # this kernel (oplus mount guard block, missing susfs_def include).
           patch -p1 --batch < /tmp/Patches/OnePlus9R/susfs_fixed.patch
 
+          # fs/stat.c needs susfs_def.h for STATX_SUS_* / susfs_is_current_app_uid().
+          python3 - <<'PYEOF'
+          path = "fs/stat.c"
+          src = open(path).read()
+          anchor = "#include <asm/unistd.h>\n"
+          block = anchor + "\n#ifdef CONFIG_KSU_SUSFS\n#include <linux/susfs_def.h>\n#endif // #ifdef CONFIG_KSU_SUSFS\n"
+          if anchor not in src:
+              raise SystemExit("stat.c anchor not found")
+          if "linux/susfs_def.h" not in src:
+              src = src.replace(anchor, block, 1)
+              open(path, "w").write(src)
+          PYEOF
+
           if find . -name "*.rej" | grep -q .; then
             echo "[-] SUSFS fix patch left rejected hunks."
             find . -name "*.rej" -exec cat {} \;

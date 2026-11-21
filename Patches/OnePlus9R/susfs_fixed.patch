@@ -37,13 +37,3 @@
  
  #include <asm/elf.h>
  #include <asm/tlb.h>
---- a/fs/stat.c
-+++ b/fs/stat.c
-@@ -21,3 +21,7 @@
- #include <linux/uaccess.h>
- #include <asm/unistd.h>
- 
-+#ifdef CONFIG_KSU_SUSFS
-+#include <linux/susfs_def.h>
-+#endif // #ifdef CONFIG_KSU_SUSFS
-+
