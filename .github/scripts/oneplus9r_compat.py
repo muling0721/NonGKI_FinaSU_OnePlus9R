@@ -327,6 +327,22 @@ def uaccess_h():
 
 
 def finasu_selinux():
+    # This tree stores the SELinux credential blob directly in cred->security.
+    patch_file(
+        "security/selinux/include/objsec.h",
+        [
+            ("#include <linux/binfmts.h>\n", "#include <linux/binfmts.h>\n#include <linux/cred.h>\n"),
+            (
+                "/*\n * get the subjective security ID of the current task",
+                "static inline struct task_security_struct *selinux_cred(const struct cred *cred)\n"
+                "{\n"
+                "\treturn cred->security;\n"
+                "}\n\n"
+                "/*\n * get the subjective security ID of the current task",
+            ),
+        ],
+    )
+
     # This tree stores the SELinux inode blob directly in i_security.
     patch_file(
         "FinaSU/kernel/selinux/inode.c",
