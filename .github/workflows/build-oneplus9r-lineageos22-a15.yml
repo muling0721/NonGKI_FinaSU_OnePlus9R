@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      runtime_diagnostics:
+        description: 'Build a test ZIP with read-only FinaSU boot status; never publish'
+        required: false
+        type: boolean
+        default: false
 
   schedule:
     - cron: '0 18 * * 5'
@@ -122,6 +127,12 @@ jobs:
       - name: ⏰ Checkout repository
         uses: actions/checkout@v6
 
+      - name: Refuse conflicting diagnostics options
+        if: ${{ inputs.runtime_diagnostics && inputs.diagnostics }}
+        run: |
+          echo '::error::Select only one diagnostics mode.'
+          exit 1
+
       - name: ⌛️ Compilation environment preparation
         uses: ./.github/workflows/build-env
 
@@ -150,6 +161,13 @@ jobs:
             find . -name "*.rej" -exec cat {} \;
             false
           fi
+
+      - name: Enable read-only FinaSU runtime diagnostics
+        if: ${{ inputs.runtime_diagnostics }}
+        working-directory: device_kernel
+        run: |
+          python3 "$GITHUB_WORKSPACE/.github/scripts/oneplus9r_runtime_diag.py"
+          echo 'ROM_TEXT=lineageos22_a15-runtime-diag' >> "$GITHUB_ENV"
 
       - name: 🪛 Extra Kernel Options
         run: |
@@ -212,7 +230,7 @@ jobs:
           archive: false
 
       - name: 🚀 Publish Release
-        if: github.event_name == 'workflow_dispatch' && inputs.release && !inputs.diagnostics
+        if: github.event_name == 'workflow_dispatch' && inputs.release && !inputs.diagnostics && !inputs.runtime_diagnostics
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "OnePlus9R-FinaSU-${{ github.run_number }}"
