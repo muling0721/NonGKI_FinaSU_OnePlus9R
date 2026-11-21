@@ -465,6 +465,72 @@ def finasu_file_wrapper():
         print(f"[compat] {path} already patched")
 
 
+def kernel_selinux_headers():
+    # avtab_insert_nonunique() is global in 4.19 but missing from avtab.h.
+    path = "security/selinux/ss/avtab.h"
+    data = read(path)
+    if "avtab_insert_nonunique" in data:
+        print(f"[compat] {path} already patched")
+        return
+    anchor = "struct avtab_datum *avtab_search(struct avtab *h, struct avtab_key *k);"
+    if anchor not in data:
+        raise SystemExit(f"[compat] anchor not found in {path}")
+    block = (
+        anchor
+        + "\nstruct avtab_node *avtab_insert_nonunique(struct avtab *h, struct avtab_key *key,\n"
+        + "\t\t\t\t\t struct avtab_datum *datum);"
+    )
+    patch_file(path, [(anchor, block)])
+
+
+def finasu_pkg_observer():
+    # fsnotify_ops replaced handle_event with handle_inode_event in 5.9 and
+    # 4.19 requires free_mark for caller-allocated marks.
+    path = "FinaSU/kernel/manager/pkg_observer.c"
+    data = read(path)
+    if "ksu_handle_event" in data:
+        print(f"[compat] {path} already patched")
+        return
+    old = (
+        "static const struct fsnotify_ops ksu_ops = {\n"
+        "    .handle_inode_event = ksu_handle_inode_event,\n"
+        "};"
+    )
+    new = (
+        "#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)\n"
+        "static int ksu_handle_event(struct fsnotify_group *group, struct inode *inode, u32 mask,\n"
+        "                            const void *data, int data_type, const unsigned char *file_name,\n"
+        "                            u32 cookie, struct fsnotify_iter_info *iter_info)\n"
+        "{\n"
+        "    struct qstr name;\n"
+        "\n"
+        "    if (!file_name)\n"
+        "        return 0;\n"
+        "    name.name = file_name;\n"
+        "    name.len = strlen(file_name);\n"
+        "    return ksu_handle_inode_event(NULL, mask, inode, NULL, &name, cookie);\n"
+        "}\n"
+        "\n"
+        "static void ksu_free_mark(struct fsnotify_mark *mark)\n"
+        "{\n"
+        "    kfree(mark);\n"
+        "}\n"
+        "#endif\n"
+        "\n"
+        "static const struct fsnotify_ops ksu_ops = {\n"
+        "#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)\n"
+        "    .handle_inode_event = ksu_handle_inode_event,\n"
+        "#else\n"
+        "    .handle_event = ksu_handle_event,\n"
+        "    .free_mark = ksu_free_mark,\n"
+        "#endif\n"
+        "};"
+    )
+    if old not in data:
+        raise SystemExit(f"[compat] fsnotify_ops anchor not found in {path}")
+    patch_file(path, [(old, new)])
+
+
 def main():
     if not read("Makefile").startswith("# SPDX"):
         print("[compat] not in a kernel source tree", file=sys.stderr)
@@ -478,6 +544,8 @@ def main():
     finasu_selinux()
     finasu_selinux_sidtab()
     finasu_file_wrapper()
+    finasu_pkg_observer()
+    kernel_selinux_headers()
     task_work_h()
     finasu_seccomp_cache()
     finasu_patch_memory()
