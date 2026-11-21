@@ -21,7 +21,7 @@ env:
   DEVICE_CODENAME : "lemonades"
 
   CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
-  EXTRA_CMDS : "BRAND_SHOW_FLAG=oneplus LD=ld.lld LLVM=1 LLVM_IAS=1 KCFLAGS=-Wno-strict-prototypes"
+  EXTRA_CMDS : "BRAND_SHOW_FLAG=oneplus LD=ld.lld LLVM=1 LLVM_IAS=1 KCFLAGS='-Wno-strict-prototypes -Wno-implicit-int -Wno-incompatible-pointer-types'"
 
   KERNEL_SOURCE : "https://github.com/wcedla/android_kernel_oneplus_sm8250_los.git"
   KERNEL_BRANCH : "lineage-22.1"
