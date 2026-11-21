@@ -1,0 +1,194 @@
+name: Build OnePlus 9R (LineageOS 22.1 A15)
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Create a GitHub Release after build'
+        required: false
+        type: boolean
+        default: true
+
+  schedule:
+    - cron: '0 18 * * 5'
+
+env:
+  # Device env
+  DEVICE_NAME : "oneplus_9r"
+  DEVICE_CODENAME : "lemonades"
+
+  CUSTOM_CMDS : "CLANG_TRIPLE=aarch64-linux-gnu-"
+  EXTRA_CMDS : "BRAND_SHOW_FLAG=oneplus LD=ld.lld LLVM=1 LLVM_IAS=1"
+
+  KERNEL_SOURCE : "https://github.com/wcedla/android_kernel_oneplus_sm8250_los.git"
+  KERNEL_BRANCH : "lineage-22.1"
+
+  CLANG_SOURCE : "https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.0/LLVM-20.1.0-Linux-X64.tar.xz"
+  CLANG_BRANCH : ""
+
+  GCC_GNU : false
+  GCC_64_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
+  GCC_64_BRANCH : "android12L-release"
+  GCC_32_SOURCE : "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
+  GCC_32_BRANCH : "android12L-release"
+
+  DEFCONFIG_SOURCE: ""
+  DEFCONFIG_NAME : "vendor/kona-perf_defconfig"
+  DEFCONFIG_ORIGIN_IMAGE: ""
+  DEFCONFIG_FROM_BOOT: false
+
+  # FinaSU (KernelSU fork) built into the kernel image
+  FINASU_MANAGER_URL : "https://github.com/LyraVoid/FinaSU/releases/download/v1.6.5/FinaSU_v1.6.5_33213-release.apk"
+
+  KERNELSU_SOURCE : "https://raw.githubusercontent.com/LyraVoid/FinaSU/v1.6.5/kernel/setup.sh"
+  KERNELSU_BRANCH : "v1.6.5"
+
+  KERNELSU_AUTO_GET : "false"
+  KERNELSU_AUTO_FORK : "bakasu"
+
+  SUSFS_ENABLE : true
+  SUSFS_FIXED : true
+
+  AK3_SOURCE : "https://github.com/osm0sis/AnyKernel3.git"
+  AK3_BRANCH : "master"
+
+  BOOT_SOURCE : ""
+
+  NEED_DTBO : false
+  NEED_SAFE_DTBO : false
+
+  ROM_TEXT : "lineageos22_a15"
+
+  # Other env
+  PYTHON_VERSION: "3"
+
+  PACK_METHOD: "AnyKernel3"
+  PACK_KMODULES: "false"
+
+  KERNELSU_METHOD: "shell"
+
+  PATCHES_SOURCE: "JackA1ltman/NonGKI_Kernel_Patches"
+  PATCHES_BRANCH: "op_kernel"
+
+  SUSFS_FOLDER_FIXED: "kona_cos15_a15"
+  SUSFS_PATCH_FIXED: "susfs_fixed"
+
+  REKERNEL_ENABLE: "false"
+  DROIDSPACES_ENABLE: "false"
+  NOMOUNT_ENABLE: "false"
+  FGETPRIORITY_ENABLE: "false"
+  VPNHIDE_ENABLE: "false"
+
+  HOOK_METHOD: "syscall"
+
+  KPM_ENABLE: "false"
+  KPM_INLINE: "false"
+  KPM_KPATCH_NEXT: "false"
+  KPM_PATCH_SOURCE: "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux"
+
+  BASEBAND_GUARD_ENABLE: "false"
+  BASEBAND_GUARD_BOOT: "false"
+
+  GENERATE_DTB: "false"
+  GENERATE_CHIP: "qcom"
+
+  BUILD_DEBUGGER: "true"
+  SKIP_PATCH: "false"
+
+  BUILD_OTHER_CONFIG: "false"
+  MERGE_CONFIG_FILES: ""
+
+  FREE_MORE_SPACE: "false"
+
+jobs:
+  build-kernel:
+    name: OnePlus 9R (lemonades) - LineageOS 22.1
+    runs-on: ubuntu-24.04
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+
+    steps:
+      - name: ⏰ Checkout repository
+        uses: actions/checkout@v6
+
+      - name: ⌛️ Compilation environment preparation
+        uses: ./.github/workflows/build-env
+
+      - name: 📦 Get FinaSU Manager
+        uses: ./.github/workflows/finasu-manager
+
+      - name: ⚙️ Get necessary tools
+        uses: ./.github/workflows/build-ready
+
+      - name: 🪝 Patch Kernel of SUSFS
+        uses: ./.github/workflows/patch-susfs
+
+      - name: 🪛 Extra Kernel Options
+        run: |
+          cd $GITHUB_WORKSPACE/device_kernel
+
+          DEFCONFIG="arch/${{ env.KERNEL_ARCH }}/configs/${{ env.DEFCONFIG_NAME }}"
+
+          # FinaSU built-in requirements / backends
+          grep -q '^CONFIG_KSU=y$' "$DEFCONFIG" || echo "CONFIG_KSU=y" >> "$DEFCONFIG"
+          grep -q '^CONFIG_KALLSYMS=y$' "$DEFCONFIG" || echo "CONFIG_KALLSYMS=y" >> "$DEFCONFIG"
+          grep -q '^CONFIG_KALLSYMS_ALL=y$' "$DEFCONFIG" || echo "CONFIG_KALLSYMS_ALL=y" >> "$DEFCONFIG"
+          grep -q '^CONFIG_EXT4_FS=y$' "$DEFCONFIG" || echo "CONFIG_EXT4_FS=y" >> "$DEFCONFIG"
+          grep -q '^CONFIG_KSU_HOOK_TRACEPOINT=y$' "$DEFCONFIG" || echo "CONFIG_KSU_HOOK_TRACEPOINT=y" >> "$DEFCONFIG"
+
+          # The generic SUSFS action writes this option without a value.
+          sed -i 's/^CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER$/CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER=y/' "$DEFCONFIG"
+
+          echo "::group::[+] FinaSU / SUSFS options"
+          grep -E "CONFIG_(KSU|KALLSYMS|EXT4_FS)" "$DEFCONFIG" | sort -u
+          echo "::endgroup::"
+
+          # Sanity check FinaSU tree
+          test -L drivers/kernelsu
+          test -f drivers/kernelsu/Kbuild
+
+      - name: 🚀 Build Process
+        uses: ./.github/workflows/build-process
+
+      - name: 🔩 Pack Process
+        uses: ./.github/workflows/pack-process
+
+      - name: ✏️ Upload Artifacts
+        uses: ./.github/workflows/upload-files
+
+      - name: 📦 Upload FinaSU Manager
+        uses: actions/upload-artifact@v7
+        with:
+          path: |
+            manager/FinaSU-manager.apk
+          archive: false
+
+      - name: 🚀 Publish Release
+        if: github.event_name == 'schedule' || inputs.release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "OnePlus9R-FinaSU-${{ github.run_number }}"
+          name: "OnePlus 9R FinaSU ${{ github.run_number }}"
+          body: |
+            OnePlus 9R (lemonades) Non-GKI kernel
+
+            | Item | Value |
+            | --- | --- |
+            | Kernel | 4.19.325 |
+            | Source | wcedla/android_kernel_oneplus_sm8250_los (lineage-22.1) |
+            | Root | FinaSU v1.6.5 (built-in) |
+            | SUSFS | v2.4.0 |
+            | Hook | Tracepoint |
+            | Pack | AnyKernel3 |
+
+            Flash the kernel zip through a custom recovery or a kernel manager.
+            Install the bundled FinaSU Manager APK to manage root.
+          files: |
+            device_kernel/${{ env.PACK_NAME }}
+            manager/FinaSU-manager.apk
+          fail_on_unmatched_files: false

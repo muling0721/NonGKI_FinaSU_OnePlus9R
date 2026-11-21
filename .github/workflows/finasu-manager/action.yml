@@ -1,0 +1,54 @@
+name: 'Fetch FinaSU Manager and align the kernel trust slot.'
+
+runs:
+  using: 'composite'
+  steps:
+      - name: Get FinaSU Manager
+        shell: bash
+        run: |
+          cd $GITHUB_WORKSPACE
+
+          mkdir -p manager
+          MANAGER_URL="${{ env.FINASU_MANAGER_URL }}"
+
+          if [[ -z "$MANAGER_URL" ]]; then
+            echo "[-] FINASU_MANAGER_URL is empty."
+            false
+          fi
+
+          echo "::group::[+] Downloading FinaSU Manager..."
+          curl -sSL --fail --retry 3 -o manager/FinaSU-manager.apk "$MANAGER_URL"
+          echo "::endgroup::"
+
+          if [[ ! -s "manager/FinaSU-manager.apk" ]]; then
+            echo "[-] Failed to download FinaSU Manager."
+            false
+          fi
+
+          echo "[+] FinaSU Manager downloaded."
+
+      - name: Align Manager signature
+        shell: bash
+        run: |
+          cd $GITHUB_WORKSPACE
+
+          # The kernel validates the manager signing certificate (DER size + SHA256).
+          # FinaSU keeps the upstream KernelSU slot as slot1, so its own release
+          # certificate is passed as the second trusted slot.
+          CERT_INFO=$(python3 $GITHUB_WORKSPACE/.github/scripts/extract_manager_cert.py manager/FinaSU-manager.apk | head -n1)
+
+          CERT_SIZE=$(echo "$CERT_INFO" | awk '{print $1}')
+          CERT_HASH=$(echo "$CERT_INFO" | awk '{print $2}')
+
+          if [[ -z "$CERT_SIZE" ]] || [[ -z "$CERT_HASH" ]]; then
+            echo "[-] Could not read the manager signing certificate."
+            false
+          fi
+
+          echo "[+] Manager certificate size: $CERT_SIZE"
+          echo "[+] Manager certificate hash: $CERT_HASH"
+
+          echo "KSU_EXPECTED_SIZE2=$CERT_SIZE" >> $GITHUB_ENV
+          echo "KSU_EXPECTED_HASH2=$CERT_HASH" >> $GITHUB_ENV
+          echo "KSU_SECOND_SIGNATURE_RELEASE=1" >> $GITHUB_ENV
+          echo "MANAGER_APK=$GITHUB_WORKSPACE/manager/FinaSU-manager.apk" >> $GITHUB_ENV
