@@ -327,6 +327,17 @@ def uaccess_h():
 
 
 def finasu_selinux():
+    # This tree stores the SELinux inode blob directly in i_security.
+    patch_file(
+        "FinaSU/kernel/selinux/inode.c",
+        [(
+            "#else\n    return selinux_inode(inode);\n#endif",
+            "#elif LINUX_VERSION_CODE < KERNEL_VERSION(5, 1, 0)\n"
+            "    return inode->i_security;\n"
+            "#else\n    return selinux_inode(inode);\n#endif",
+        )],
+    )
+
     # 4.19 exposes struct selinux_policy as struct selinux_ss, keeps the
     # status page/lock inside it, and has no per-state policy mutex.
     kbuild = "FinaSU/kernel/Kbuild"
