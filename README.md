@@ -31,7 +31,7 @@ Builds run on GitHub Actions (`ubuntu-24.04`), including the weekly Friday 18:00
 ## Notes
 
 - FinaSU is compiled into the image (`CONFIG_KSU=y`). The manager signing certificate is aligned automatically through `KSU_EXPECTED_SIZE2 / KSU_EXPECTED_HASH2 / KSU_SECOND_SIGNATURE_RELEASE=1`.
-- SUSFS applies the generic 4.19 patch plus [`Patches/OnePlus9R/susfs_fixed.patch`](Patches/OnePlus9R/susfs_fixed.patch).
+- SUSFS applies the generic 4.19 patch plus [`Patches/OnePlus9R/susfs_fixed.patch`](Patches/OnePlus9R/susfs_fixed.patch). Following the principle of [selinux_maf_fork](https://github.com/741afb7/selinux_maf_fork), the fixed patch also adds the 4.19 SELinux hide hooks: a clean status-page factory (`security/selinux/ss/status.c`) and clean-policy answers for `/sys/fs/selinux/context`, `/access` and `setprocattr` (`selinuxfs.c`, `hooks.c`), so FinaSU's "Hide SELinux modification" switch actually takes effect.
 - The AnyKernel3 installer checks for `lemonades`. A successful build is not proof that the kernel boots; boot compatibility has not been verified on hardware.
 - When a build fails, rejects and error logs are uploaded as artifacts (`BUILD_DEBUGGER=true`).
 - Flash at your own risk; back up your boot partition first.

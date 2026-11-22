@@ -32,7 +32,7 @@
 - 内核以 **Built-In（`CONFIG_KSU=y`）** 方式集成 FinaSU；管理器签名通过
   `KSU_EXPECTED_SIZE2 / KSU_EXPECTED_HASH2 / KSU_SECOND_SIGNATURE_RELEASE=1`
   与 Release APK 的签名证书对齐（由 `finasu-manager` action 自动完成）。
-- SUSFS 使用 4.19 通用补丁及本仓库的 [`Patches/OnePlus9R/susfs_fixed.patch`](Patches/OnePlus9R/susfs_fixed.patch)。
+- SUSFS 使用 4.19 通用补丁及本仓库的 [`Patches/OnePlus9R/susfs_fixed.patch`](Patches/OnePlus9R/susfs_fixed.patch)。该修正补丁参照 [selinux_maf_fork](https://github.com/741afb7/selinux_maf_fork) 的原理补上 4.19 的 SELinux 隐藏：应用读取 `/sys/fs/selinux/status` 时由 `security/selinux/ss/status.c` 返回干净的状态页；`/sys/fs/selinux/context`、`/access` 与 `setprocattr` 使用 KernelSU 注入前的 `backup_sepolicy` 计算（`selinuxfs.c`、`hooks.c`），使 FinaSU 的「隐藏 SELinux 修改」开关真正生效。
 - AnyKernel3 安装脚本会检查设备代号 `lemonades`。构建成功不代表能开机，目前还没有实机启动验证。
 - 构建失败时会把 `.rej` 与错误日志打进 Artifact（`BUILD_DEBUGGER=true`）。
 - 刷机有风险，请先备份 boot 分区。
