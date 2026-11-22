@@ -10,6 +10,8 @@ STAGES = {
     "INIT": "init_entered",
     "SELINUX": "selinux_init_rc",
     "DISPATCHER": "dispatcher_init_rc",
+    "PATCH_MAP": "patch_last_map_rc",
+    "PATCH_WRITE": "patch_last_write_rc",
     "TRACE": "trace_hook_init_rc",
     "REBOOT": "driver_probe_rc",
     "POST_FS": "post_fs_data_seen",
@@ -49,7 +51,7 @@ atomic_t oneplus9r_diag[DIAG_COUNT] = {
 
 static int oneplus9r_diag_show(struct seq_file *m, void *unused)
 {
-    seq_puts(m, "fina_9r_diag_v2\\nnot_run=-4096\\n");
+    seq_puts(m, "fina_9r_diag_v3\\nnot_run=-4096\\n");
 """ + "".join(
     f'    seq_printf(m, "{name}=%d\\n", atomic_read(&oneplus9r_diag[DIAG_{key}]));\n'
     for key, name in STAGES.items()
@@ -65,7 +67,7 @@ static void oneplus9r_diag_log(struct work_struct *work)
 {
     static unsigned int sample;
 
-    pr_warn("fina_9r_diag_v2 sample=%u not_run=-4096 "
+    pr_warn("fina_9r_diag_v3 sample=%u not_run=-4096 "
 """ + "".join(f'            "{name}=%d "\n' for name in STAGES.values()) + """            "\\n", ++sample,
 """ + ",\n".join(f"            atomic_read(&oneplus9r_diag[DIAG_{key}])" for key in STAGES) + """);
     if (sample < 20)
@@ -87,6 +89,14 @@ EDITS = {
         ("    ret = ksu_syscall_hook_init();", "    ret = ksu_syscall_hook_init();\n    oneplus9r_diag_set(DIAG_DISPATCHER, ret);"),
         ("        ret = ksu_syscall_hook_manager_init();\n        if (!ret)",
          "        ret = ksu_syscall_hook_manager_init();\n        oneplus9r_diag_set(DIAG_TRACE, ret);\n        if (!ret)"),
+    ],
+    "hook/arm64/patch_memory.c": [
+        ("    unsigned long phy = phys_from_virt(p, &phy_err);",
+         "    unsigned long phy = phys_from_virt(p, &phy_err);\n"
+         "    oneplus9r_diag_set(DIAG_PATCH_MAP, phy_err);"),
+        ("    clear_fixmap(FIX_TEXT_POKE0);",
+         "    oneplus9r_diag_set(DIAG_PATCH_WRITE, ret);\n"
+         "    clear_fixmap(FIX_TEXT_POKE0);"),
     ],
     "supercall/supercall.c": [
         ("    rc = register_kprobe(&reboot_kp);", "    rc = register_kprobe(&reboot_kp);\n    oneplus9r_diag_set(DIAG_REBOOT, rc);"),

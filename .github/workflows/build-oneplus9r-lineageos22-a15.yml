@@ -167,7 +167,7 @@ jobs:
         working-directory: device_kernel
         run: |
           python3 "$GITHUB_WORKSPACE/.github/scripts/oneplus9r_runtime_diag.py"
-          echo 'ROM_TEXT=lineageos22_a15-runtime-diag-v2' >> "$GITHUB_ENV"
+          echo 'ROM_TEXT=lineageos22_a15-runtime-diag-v3' >> "$GITHUB_ENV"
 
       - name: 🪛 Extra Kernel Options
         run: |

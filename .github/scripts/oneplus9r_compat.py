@@ -144,6 +144,41 @@ def finasu_patch_memory():
             "    pud = pud_offset(pgd, addr);\n"
             "#endif",
         ),
+        # A 4.19 ARM64 kernel can map its rodata (including sys_call_table)
+        # with block descriptors called sections. Recognize them before
+        # pud_bad()/pmd_bad(), which reject any non-table descriptor.
+        (
+            "    if (pud_none(*pud) || pud_bad(*pud))\n"
+            "        goto fail;\n"
+            "#if defined(pud_leaf)\n"
+            "    if (pud_leaf(*pud)) {\n"
+            "        return __pud_to_phys(*pud) + ((addr & ~PUD_MASK));\n"
+            "    }\n"
+            "#endif",
+            "#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 20, 0)\n"
+            "    if (pud_sect(*pud))\n"
+            "        return __pud_to_phys(*pud) + (addr & ~PUD_MASK);\n"
+            "#elif defined(pud_leaf)\n"
+            "    if (pud_leaf(*pud))\n"
+            "        return __pud_to_phys(*pud) + (addr & ~PUD_MASK);\n"
+            "#endif\n"
+            "    if (pud_none(*pud) || pud_bad(*pud))\n"
+            "        goto fail;",
+        ),
+        (
+            "#if defined(pmd_leaf)\n"
+            "    if (pmd_leaf(*pmd)) {\n"
+            "        return __pmd_to_phys(*pmd) + ((addr & ~PMD_MASK));\n"
+            "    }\n"
+            "#endif",
+            "#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 20, 0)\n"
+            "    if (pmd_sect(*pmd))\n"
+            "        return __pmd_to_phys(*pmd) + (addr & ~PMD_MASK);\n"
+            "#elif defined(pmd_leaf)\n"
+            "    if (pmd_leaf(*pmd))\n"
+            "        return __pmd_to_phys(*pmd) + (addr & ~PMD_MASK);\n"
+            "#endif",
+        ),
         # copy_to_kernel_nofault() was added in 5.8; probe_kernel_write()
         # is the equivalent helper on 4.19.
         (
@@ -182,8 +217,8 @@ def task_work_h():
 
 def finasu_seccomp_cache():
     # 4.19's struct seccomp_filter has neither the action cache nor the
-    # newer refcount layout. The cache only optimises __NR_reboot passthrough,
-    # so turn it into a no-op instead of writing out of bounds.
+    # newer refcount layout. Leave the app's seccomp filter unchanged rather
+    # than accessing missing fields. This does not provide reboot passthrough.
     path = "FinaSU/kernel/infra/seccomp_cache.c"
     data = read(path)
     if "LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)" in data:
