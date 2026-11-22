@@ -1,29 +1,9 @@
-name: Build OnePlus 9R (LineageOS 22.1 A15)
+name: OnePlus 9R setresuid test (seccomp enabled)
 
 permissions:
-  contents: write
+  contents: read
 
-on:
-  workflow_dispatch:
-    inputs:
-      release:
-        description: 'Create a GitHub Release after build'
-        required: false
-        type: boolean
-        default: false
-      diagnostics:
-        description: 'Collect more compiler errors; do not package or publish'
-        required: false
-        type: boolean
-        default: false
-      runtime_diagnostics:
-        description: 'Build a test ZIP with read-only FinaSU boot status; never publish'
-        required: false
-        type: boolean
-        default: false
-
-  schedule:
-    - cron: '0 18 * * 5'
+on: workflow_dispatch
 
 env:
   # Device env
@@ -115,23 +95,18 @@ env:
 
 jobs:
   build-kernel:
-    name: OnePlus 9R (lemonades) - LineageOS 22.1
+    name: OnePlus 9R (lemonades) - setresuid test
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/setresuid-9r'
     runs-on: ubuntu-24.04
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      BUILD_KEEP_GOING: ${{ inputs.diagnostics && 'true' || 'false' }}
+      BUILD_KEEP_GOING: 'false'
 
     steps:
       - name: ⏰ Checkout repository
         uses: actions/checkout@v6
-
-      - name: Refuse conflicting diagnostics options
-        if: ${{ inputs.runtime_diagnostics && inputs.diagnostics }}
-        run: |
-          echo '::error::Select only one diagnostics mode.'
-          exit 1
 
       - name: ⌛️ Compilation environment preparation
         uses: ./.github/workflows/build-env
@@ -162,12 +137,18 @@ jobs:
             false
           fi
 
+      - name: Attach FinaSU's missing SUSFS setresuid callback
+        working-directory: device_kernel
+        run: |
+          patch_file="$GITHUB_WORKSPACE/Patches/OnePlus9R/finasu_setresuid_419.patch"
+          git apply --check "$patch_file"
+          git apply "$patch_file"
+
       - name: Enable read-only FinaSU runtime diagnostics
-        if: ${{ inputs.runtime_diagnostics }}
         working-directory: device_kernel
         run: |
           python3 "$GITHUB_WORKSPACE/.github/scripts/oneplus9r_runtime_diag.py"
-          echo 'ROM_TEXT=lineageos22_a15-runtime-diag-v3' >> "$GITHUB_ENV"
+          echo 'ROM_TEXT=lineageos22_a15-runtime-diag-v4-setresuid-test' >> "$GITHUB_ENV"
 
       - name: 🪛 Extra Kernel Options
         run: |
@@ -197,7 +178,6 @@ jobs:
         uses: ./.github/workflows/build-process
 
       - name: Verify kernel configuration
-        if: ${{ !inputs.diagnostics }}
         working-directory: device_kernel
         run: |
           kernel_release=$(<out/include/config/kernel.release)
@@ -205,51 +185,16 @@ jobs:
           if [[ "$kernel_release" != '4.19.325-perf+' ]]; then
             echo '::warning::Kernel release differs from the reported 4.19.325-perf+.'
           fi
-          for option in CONFIG_KSU CONFIG_KSU_SUSFS CONFIG_KSU_HOOK_TRACEPOINT; do
+          for option in CONFIG_KSU CONFIG_KSU_SUSFS CONFIG_KSU_HOOK_TRACEPOINT CONFIG_SECCOMP CONFIG_SECCOMP_FILTER CONFIG_SECURITY_SELINUX; do
             if ! grep -qxF "$option=y" out/.config; then
               echo "::error::$option is not enabled in the generated kernel config."
               exit 1
             fi
           done
-          printf 'Kernel release: `%s`\n' "$kernel_release" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Kernel release: `%s`\n\nTest only: FinaSU setresuid; seccomp and its filters enabled.\n' "$kernel_release" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 🔩 Pack Process
-        if: ${{ !inputs.diagnostics }}
         uses: ./.github/workflows/pack-process
 
       - name: ✏️ Upload Artifacts
-        if: ${{ !inputs.diagnostics }}
         uses: ./.github/workflows/upload-files
-
-      - name: 📦 Upload FinaSU Manager
-        if: ${{ !inputs.diagnostics }}
-        uses: actions/upload-artifact@v7
-        with:
-          path: |
-            manager/FinaSU-manager.apk
-          archive: false
-
-      - name: 🚀 Publish Release
-        if: github.event_name == 'workflow_dispatch' && inputs.release && !inputs.diagnostics && !inputs.runtime_diagnostics
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "OnePlus9R-FinaSU-${{ github.run_number }}"
-          name: "OnePlus 9R FinaSU ${{ github.run_number }}"
-          body: |
-            OnePlus 9R (lemonades) Non-GKI kernel
-
-            | Item | Value |
-            | --- | --- |
-            | Kernel | 4.19.325 |
-            | Source | wcedla/android_kernel_oneplus_sm8250_los (lineage-22.1) |
-            | Root | FinaSU v1.6.5 (built-in) |
-            | SUSFS | v2.4.0 |
-            | Hook | Tracepoint |
-            | Pack | AnyKernel3 |
-
-            Flash the kernel zip through a custom recovery or a kernel manager.
-            Install the bundled FinaSU Manager APK to manage root.
-          files: |
-            device_kernel/${{ env.PACK_NAME }}
-            manager/FinaSU-manager.apk
-          fail_on_unmatched_files: true

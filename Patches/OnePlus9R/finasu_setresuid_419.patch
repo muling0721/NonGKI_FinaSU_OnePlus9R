@@ -1,0 +1,31 @@
+diff --git a/kernel/sys.c b/kernel/sys.c
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -619,6 +619,10 @@ SYSCALL_DEFINE1(setuid, uid_t, uid)
+ }
+ 
+ 
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_SUSFS)
++extern int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid);
++#endif
++
+ /*
+  * This function implements a generic ability to update ruid, euid,
+  * and suid.  This allows you to implement the 4.4 compatible seteuid().
+@@ -680,7 +684,16 @@ long __sys_setresuid(uid_t ruid, uid_t euid, uid_t suid)
+ 	retval = security_task_fix_setuid(new, old, LSM_SETID_RES);
+ 	if (retval < 0)
+ 		goto error;
+ 
++#if defined(CONFIG_KSU) && defined(CONFIG_KSU_SUSFS)
++	/*
++	 * Give FinaSU the validated target IDs after all checks, while
++	 * current credentials still describe the source process.
++	 */
++	if (!uid_eq(old->uid, new->uid))
++		ksu_handle_setresuid(new->uid.val, new->euid.val, new->suid.val);
++#endif
++
+ 	return commit_creds(new);
+ 
+ error:

@@ -21,6 +21,10 @@ STAGES = {
     "SCAN": "manager_scan_seen",
     "SIGNER": "trusted_finasu_signer_seen",
     "MANAGER": "manager_recognized",
+    "SETRESUID": "setresuid_hook_seen",
+    "ZYGOTE": "zygote_setresuid_seen",
+    "MANAGER_FD": "manager_fd_install_rc",
+    "MANAGER_INFO": "manager_get_info_rc",
 }
 
 # Use an out-of-range errno as the marker for a stage that has not been reached.
@@ -51,7 +55,7 @@ atomic_t oneplus9r_diag[DIAG_COUNT] = {
 
 static int oneplus9r_diag_show(struct seq_file *m, void *unused)
 {
-    seq_puts(m, "fina_9r_diag_v3\\nnot_run=-4096\\n");
+    seq_puts(m, "fina_9r_diag_v4\\nnot_run=-4096\\n");
 """ + "".join(
     f'    seq_printf(m, "{name}=%d\\n", atomic_read(&oneplus9r_diag[DIAG_{key}]));\n'
     for key, name in STAGES.items()
@@ -67,7 +71,7 @@ static void oneplus9r_diag_log(struct work_struct *work)
 {
     static unsigned int sample;
 
-    pr_warn("fina_9r_diag_v3 sample=%u not_run=-4096 "
+    pr_warn("fina_9r_diag_v4 sample=%u not_run=-4096 "
 """ + "".join(f'            "{name}=%d "\n' for name in STAGES.values()) + """            "\\n", ++sample,
 """ + ",\n".join(f"            atomic_read(&oneplus9r_diag[DIAG_{key}])" for key in STAGES) + """);
     if (sample < 20)
@@ -97,6 +101,33 @@ EDITS = {
         ("    clear_fixmap(FIX_TEXT_POKE0);",
          "    oneplus9r_diag_set(DIAG_PATCH_WRITE, ret);\n"
          "    clear_fixmap(FIX_TEXT_POKE0);"),
+    ],
+    "hook/setuid_hook.c": [
+        ("static void ksu_handle_susfs_setresuid(uid_t old_uid, uid_t new_uid, bool zygote_next)\n{",
+         "static void ksu_handle_susfs_setresuid(uid_t old_uid, uid_t new_uid, bool zygote_next)\n{\n"
+         "    int fd;\n\n"
+         "    oneplus9r_diag_set(DIAG_ZYGOTE, 1);"),
+        ("        ksu_install_fd();\n        return;",
+         "        fd = ksu_install_fd();\n"
+         "        oneplus9r_diag_set(DIAG_MANAGER_FD, fd < 0 ? fd : 0);\n"
+         "        return;"),
+        ("    uid_t old_uid = current_uid().val;\n\n    if (susfs_is_current_zygote_domain())",
+         "    uid_t old_uid = current_uid().val;\n\n"
+         "    oneplus9r_diag_set(DIAG_SETRESUID, 1);\n"
+         "    if (susfs_is_current_zygote_domain())"),
+    ],
+    "supercall/dispatch.c": [
+        ('    if (copy_to_user(arg, &cmd, sizeof(cmd))) {\n'
+         '        pr_err("get_version: copy_to_user failed\\n");\n'
+         '        return -EFAULT;\n    }\n\n    return 0;\n}\n\nstatic int do_get_info_legacy(',
+         '    if (copy_to_user(arg, &cmd, sizeof(cmd))) {\n'
+         '        if (cmd.flags & KSU_GET_INFO_FLAG_MANAGER)\n'
+         '            oneplus9r_diag_set(DIAG_MANAGER_INFO, -EFAULT);\n'
+         '        pr_err("get_version: copy_to_user failed\\n");\n'
+         '        return -EFAULT;\n    }\n\n'
+         '    if (cmd.flags & KSU_GET_INFO_FLAG_MANAGER)\n'
+         '        oneplus9r_diag_set(DIAG_MANAGER_INFO, 0);\n'
+         '    return 0;\n}\n\nstatic int do_get_info_legacy('),
     ],
     "supercall/supercall.c": [
         ("    rc = register_kprobe(&reboot_kp);", "    rc = register_kprobe(&reboot_kp);\n    oneplus9r_diag_set(DIAG_REBOOT, rc);"),
