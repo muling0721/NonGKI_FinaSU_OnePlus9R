@@ -140,7 +140,8 @@ jobs:
       - name: Attach FinaSU's missing SUSFS setresuid callback
         working-directory: device_kernel
         run: |
-          patch_file="$GITHUB_WORKSPACE/Patches/OnePlus9R/finasu_setresuid_419.patch"
+          # build-env moves the checked-out Patches directory to /tmp.
+          patch_file=/tmp/Patches/OnePlus9R/finasu_setresuid_419.patch
           git apply --check "$patch_file"
           git apply "$patch_file"
 
