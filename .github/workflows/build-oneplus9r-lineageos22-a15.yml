@@ -1,4 +1,4 @@
-name: OnePlus 9R manager ksud FD test (seccomp enabled)
+name: OnePlus 9R SUSFS control test (seccomp enabled)
 
 permissions:
   contents: read
@@ -95,8 +95,8 @@ env:
 
 jobs:
   build-kernel:
-    name: OnePlus 9R (lemonades) - manager ksud FD test
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/ksud-fd-9r'
+    name: OnePlus 9R (lemonades) - SUSFS control test
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/susfs-control-9r'
     runs-on: ubuntu-24.04
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
@@ -161,7 +161,14 @@ jobs:
           fi
           python3 "$GITHUB_WORKSPACE/.github/scripts/oneplus9r_manager_ksud_fd.py" \
             --apk "$MANAGER_APK" --source /tmp/Patches/OnePlus9R/finasu_manager_ksud_fd.c
-          echo 'ROM_TEXT=lineageos22_a15-v6-manager-ksud-fd-test' >> "$GITHUB_ENV"
+
+      - name: Connect the privileged SUSFS control interface
+        working-directory: device_kernel
+        run: |
+          patch_file=/tmp/Patches/OnePlus9R/finasu_susfs_control_419.patch
+          git apply --check "$patch_file"
+          git apply "$patch_file"
+          echo 'ROM_TEXT=lineageos22_a15-v7-susfs-control-test' >> "$GITHUB_ENV"
 
       - name: 🪛 Extra Kernel Options
         run: |
@@ -208,7 +215,15 @@ jobs:
             echo '::error::The v6 FD handoff requires signature-based manager recognition.'
             exit 1
           fi
-          printf 'Kernel release: `%s`\n\nTest only: v5 diagnostics plus the verified manager ksud FD handoff. Seccomp, its filters, SELinux, and manager signature checks retained.\n' "$kernel_release" >> "$GITHUB_STEP_SUMMARY"
+          if grep -qxF 'CONFIG_KSU_HOOK_SUSFS_INLINE=y' out/.config; then
+            echo '::error::The v7 SUSFS control entry is for the Tracepoint backend only.'
+            exit 1
+          fi
+          if ! grep -Eq ' [Tt] ksu_handle_sys_reboot$' out/System.map; then
+            echo '::error::The v7 SUSFS control dispatcher is not linked.'
+            exit 1
+          fi
+          printf 'Kernel release: `%s`\n\nTest only: retain v6 Root bootstrap and connect the privileged SUSFS control path. SELinux policy and hide behavior unchanged.\n' "$kernel_release" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 🔩 Pack Process
         uses: ./.github/workflows/pack-process
