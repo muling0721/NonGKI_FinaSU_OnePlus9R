@@ -484,70 +484,6 @@ def finasu_selinux_sidtab():
     print(f"[compat] patched {path} (sidtab)")
 
 
-def finasu_selinux_keep_backup():
-    # 4.19 answers /sys/fs/selinux/{context,access} from backup_sepolicy via
-    # the kernel-side SUSFS hooks. The CONFIG_KSU_SUSFS branch of
-    # ksu_selinux_hide_enable() returns before setting keep_backup, so
-    # boot-completed would drop the snapshot even when the feature is on.
-    path = "FinaSU/kernel/feature/selinux_hide.c"
-    old = (
-        "    if (!backup_sepolicy) {\n"
-        "        pr_err(\"no backup sepolicy available, please save feature and reboot to retry!\\n\");\n"
-        "        return -EAGAIN;\n"
-        "    }\n"
-        "#ifdef CONFIG_KSU_SUSFS\n"
-        "    return 0;\n"
-    )
-    new = (
-        "    if (!backup_sepolicy) {\n"
-        "        pr_err(\"no backup sepolicy available, please save feature and reboot to retry!\\n\");\n"
-        "        return -EAGAIN;\n"
-        "    }\n"
-        "    /* Keep the stock policy snapshot for the 4.19 selinuxfs hooks. */\n"
-        "    ksu_selinux_hide_keep_backup = true;\n"
-        "#ifdef CONFIG_KSU_SUSFS\n"
-        "    return 0;\n"
-    )
-    patch_file(path, [(old, new)])
-
-
-def finasu_selinux_status_warnings():
-    # With CONFIG_KSU_SUSFS the kernel-side status factory owns
-    # /sys/fs/selinux/status.  The driver's private fake_status page is not
-    # used, so its late-initialisation warnings are false alarms.
-    path = "FinaSU/kernel/feature/selinux_hide.c"
-    old_second = (
-        "    if (fake_status) {\n"
-        "        static_key_disable(&fake_status_initialize_key.key);\n"
-        "    } else {\n"
-        "        pr_warn(\"selinux_hide: fake status need late initialization\\n\");\n"
-        "    }\n"
-    )
-    new_second = (
-        "    if (fake_status) {\n"
-        "        static_key_disable(&fake_status_initialize_key.key);\n"
-        "    }\n"
-        "#ifndef CONFIG_KSU_SUSFS\n"
-        "    else {\n"
-        "        pr_warn(\"selinux_hide: fake status need late initialization\\n\");\n"
-        "    }\n"
-        "#endif\n"
-    )
-    old_post = (
-        "    if (!fake_status) {\n"
-        "        pr_err(\"selinux_hide: fake status is not initialized after post-fs-data!\\n\");\n"
-        "    }\n"
-    )
-    new_post = (
-        "#ifndef CONFIG_KSU_SUSFS\n"
-        "    if (!fake_status) {\n"
-        "        pr_err(\"selinux_hide: fake status is not initialized after post-fs-data!\\n\");\n"
-        "    }\n"
-        "#endif\n"
-    )
-    patch_file(path, [(old_second, new_second), (old_post, new_post)])
-
-
 def finasu_file_wrapper():
     path = "FinaSU/kernel/infra/file_wrapper.c"
     data = read(path)
@@ -691,8 +627,6 @@ def main():
     finasu_includes()
     finasu_selinux()
     finasu_selinux_sidtab()
-    finasu_selinux_keep_backup()
-    finasu_selinux_status_warnings()
     apply_selinux_419_patch(args.patches)
     finasu_file_wrapper()
     finasu_pkg_observer()
