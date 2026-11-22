@@ -43,7 +43,9 @@
 
 v5 已观测到 `init.rc` 的 FinaSU 段落完整追加，但未观测到 `ksud` 完成启动事件。`su` 已进入内核 hook，打开 `/data/adb/ksud` 时返回 `ENOENT`，尚未达到执行或分配会话 FD 的阶段。这只证明 Android 当时无法解析该路径，不能证明 Recovery 中的文件状态。APK 内嵌的 `libksud.so` 是另一条路径：该子进程未取得驱动 FD，其备用调用被 seccomp 拦截。
 
-FinaSU v1.6.5 的 [Built-In 安装说明](https://github.com/LyraVoid/FinaSU/blob/f96445f9/website/docs/guide/install/built-in.md) 注明 AnyKernel3 不会自动更新 `ksud`。官方 `kernel-bundle.zip` 提供 ARM64 `ksud`，但不是 TWRP 刷机包；管理器的 `ksud install` 路径则要求已有 Root Shell。尚未验证适用于这台设备、无需现有 Root 的首次安装流程。
+FinaSU v1.6.5 的 [Built-In 安装说明](https://github.com/LyraVoid/FinaSU/blob/f96445f9/website/docs/guide/install/built-in.md) 注明 AnyKernel3 不会自动更新 `ksud`。上游管理器启动时，在管理器身份和 UAPI 匹配的情况下会尝试安装；它可以先用 APK 自带的 `libksud.so` 向本驱动申请 Root Shell，无须另一套 Root 方案，也无须预先存在 `/data/adb/ksud`。
+
+**v6 测试候选（未实机验证）：**保留 v5 诊断。仅对已经过原有签名检查的 User 0 管理器，在官方 APK 的 ARM64 `libksud.so` 成功执行且路径、大小与 SHA-256 都匹配后，交付普通 `O_CLOEXEC` 驱动 FD。原有 ioctl 权限、seccomp、SELinux 和管理器签名校验不变；不修改 Recovery 或主动写入 `/data`。实机验收分别看 `fina_9r_ksud_fd: payload_rc=0 fd_rc=0`、管理器安装结果、Root Shell 的 UID、重启后的启动事件，以及 SUSFS 行为。
 
 ## 目录
 

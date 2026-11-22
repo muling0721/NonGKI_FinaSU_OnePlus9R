@@ -1,4 +1,4 @@
-name: OnePlus 9R ksud diagnostics (seccomp enabled)
+name: OnePlus 9R manager ksud FD test (seccomp enabled)
 
 permissions:
   contents: read
@@ -95,8 +95,8 @@ env:
 
 jobs:
   build-kernel:
-    name: OnePlus 9R (lemonades) - ksud diagnostics
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/ksud-diag-9r'
+    name: OnePlus 9R (lemonades) - manager ksud FD test
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/ksud-fd-9r'
     runs-on: ubuntu-24.04
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
@@ -149,7 +149,19 @@ jobs:
         working-directory: device_kernel
         run: |
           python3 "$GITHUB_WORKSPACE/.github/scripts/oneplus9r_runtime_diag.py"
-          echo 'ROM_TEXT=lineageos22_a15-runtime-diag-v5-ksud-test' >> "$GITHUB_ENV"
+
+      - name: Attach manager-only ksud FD handoff
+        working-directory: device_kernel
+        run: |
+          expected=f96445f966a2c3f4c1257938acf0449757be8a04
+          actual=$(git -C FinaSU rev-parse HEAD)
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::Expected FinaSU $expected, found $actual"
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/.github/scripts/oneplus9r_manager_ksud_fd.py" \
+            --apk "$MANAGER_APK" --source /tmp/Patches/OnePlus9R/finasu_manager_ksud_fd.c
+          echo 'ROM_TEXT=lineageos22_a15-v6-manager-ksud-fd-test' >> "$GITHUB_ENV"
 
       - name: 🪛 Extra Kernel Options
         run: |
@@ -192,7 +204,11 @@ jobs:
               exit 1
             fi
           done
-          printf 'Kernel release: `%s`\n\nTest only: v4 setresuid callback plus read-only ksud diagnostics. Seccomp, its filters, and SELinux enabled.\n' "$kernel_release" >> "$GITHUB_STEP_SUMMARY"
+          if grep -qxF 'CONFIG_KSU_DISABLE_MANAGER=y' out/.config; then
+            echo '::error::The v6 FD handoff requires signature-based manager recognition.'
+            exit 1
+          fi
+          printf 'Kernel release: `%s`\n\nTest only: v5 diagnostics plus the verified manager ksud FD handoff. Seccomp, its filters, SELinux, and manager signature checks retained.\n' "$kernel_release" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 🔩 Pack Process
         uses: ./.github/workflows/pack-process
