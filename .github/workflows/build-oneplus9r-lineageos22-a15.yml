@@ -39,6 +39,7 @@ env:
   KBUILD_BUILD_HOST : "wcedla-ubuntu"
   KBUILD_BUILD_VERSION : "2"
   KBUILD_BUILD_TIMESTAMP : "Fri Jul 24 00:27:02 CST 2026"
+  KBUILD_BUILD_COMPILER : "ZyC clang version 10.0.1 (https://github.com/llvm/llvm-project ef32c611aa214dea855364efd7ba451ec5ec3f74), GNU ld (GNU Binutils) 2.39.50.20220723"
 
   KERNEL_SOURCE : "https://github.com/wcedla/android_kernel_oneplus_sm8250_los.git"
   KERNEL_BRANCH : "lineage-22.1"
@@ -159,6 +160,10 @@ jobs:
           # Fix the hunks that the generic 4.19 SUSFS patch cannot handle on
           # this kernel (oplus mount guard block, missing susfs_def include).
           patch -p1 --batch < /tmp/Patches/OnePlus9R/susfs_fixed.patch
+
+          # Allow the workflow to supply the compiler half of linux_banner so
+          # the built kernel matches the supplied boot.img exactly.
+          patch -p1 --batch < /tmp/Patches/OnePlus9R/kernel_banner.patch
 
           # Apply the OnePlus 9R-specific 4.19 compatibility adapters.
           python3 "$GITHUB_WORKSPACE/.github/scripts/oneplus9r_compat.py" --patches /tmp/Patches
