@@ -38,9 +38,11 @@ Builds run on GitHub Actions (`ubuntu-24.04`), including the weekly Friday 18:00
 
 ## Device validation
 
-The kernel has booted on a OnePlus 9R (LE2100). With the [v4 test build](https://github.com/muling0721/NonGKI_FinaSU_OnePlus9R/actions/runs/44991678924), the Manager read driver version `33213`; that fix is still on the test branch. **A working root shell and SUSFS behavior have not been verified.**
+The kernel has booted on a OnePlus 9R (LE2100). With the [v5 test build](https://github.com/muling0721/NonGKI_FinaSU_OnePlus9R/actions/runs/44993917618), the Manager received a driver FD and read version `33213`; that fix is still on the test branch. **A working root shell and SUSFS behavior have not been verified.**
 
-The v4 report shows that the Manager's `ksud` child did not obtain a driver FD and its fallback to `su` on `PATH` failed. The report does not establish whether `/data/adb/ksud` exists. The FinaSU v1.6.5 [built-in installation guide](https://github.com/LyraVoid/FinaSU/blob/f96445f9/website/docs/guide/install/built-in.md) also notes that AnyKernel3 does not automatically update `ksud`. A first-install path for this device that does not depend on existing root has not been verified.
+The v5 diagnostics show that FinaSU appended its `init.rc` fragment in full, but did not observe the `ksud` boot-completed event. The `su` hook returned `ENOENT` opening `/data/adb/ksud`, before executing it or installing a session FD. This establishes that Android could not resolve the path at the time, not whether the file exists in recovery. The Manager's bundled `libksud.so` is a separate path: its child did not obtain a driver FD, and seccomp blocked its fallback call.
+
+The FinaSU v1.6.5 [built-in installation guide](https://github.com/LyraVoid/FinaSU/blob/f96445f9/website/docs/guide/install/built-in.md) notes that AnyKernel3 does not automatically update `ksud`. The official `kernel-bundle.zip` contains an ARM64 `ksud` but is not a TWRP flashable package. The Manager's `ksud install` path requires an existing root shell. A first-install path for this device that does not depend on existing root has not been verified.
 
 ## Credits
 

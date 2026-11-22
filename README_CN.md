@@ -39,9 +39,11 @@
 
 ## 实机验证状态
 
-一加 9R（LE2100）已验证启动。[v4 测试构建](https://github.com/muling0721/NonGKI_FinaSU_OnePlus9R/actions/runs/44991678924) 上，管理器已能读取内核驱动版本 `33213`；这项修复仍在测试分支。**Root Shell 和 SUSFS 实际功能尚未验证通过。**
+一加 9R（LE2100）已验证启动。[v5 测试构建](https://github.com/muling0721/NonGKI_FinaSU_OnePlus9R/actions/runs/44993917618) 实测管理器取得驱动 FD 并读取版本 `33213`；这项修复仍在测试分支。**Root Shell 和 SUSFS 实际功能尚未验证通过。**
 
-v4 报告显示，管理器启动的 `ksud` 子进程未取得驱动 FD，按 `PATH` 查找的 `su` 也未成功。报告不能确认 `/data/adb/ksud` 是否存在。FinaSU v1.6.5 的 [Built-In 安装说明](https://github.com/LyraVoid/FinaSU/blob/f96445f9/website/docs/guide/install/built-in.md) 也注明 AnyKernel3 不会自动更新 `ksud`；本项目还没有验证适用于这台设备、无需现有 Root 的首次安装流程。
+v5 已观测到 `init.rc` 的 FinaSU 段落完整追加，但未观测到 `ksud` 完成启动事件。`su` 已进入内核 hook，打开 `/data/adb/ksud` 时返回 `ENOENT`，尚未达到执行或分配会话 FD 的阶段。这只证明 Android 当时无法解析该路径，不能证明 Recovery 中的文件状态。APK 内嵌的 `libksud.so` 是另一条路径：该子进程未取得驱动 FD，其备用调用被 seccomp 拦截。
+
+FinaSU v1.6.5 的 [Built-In 安装说明](https://github.com/LyraVoid/FinaSU/blob/f96445f9/website/docs/guide/install/built-in.md) 注明 AnyKernel3 不会自动更新 `ksud`。官方 `kernel-bundle.zip` 提供 ARM64 `ksud`，但不是 TWRP 刷机包；管理器的 `ksud install` 路径则要求已有 Root Shell。尚未验证适用于这台设备、无需现有 Root 的首次安装流程。
 
 ## 目录
 
