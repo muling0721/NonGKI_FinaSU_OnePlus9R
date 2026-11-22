@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path("FinaSU/kernel")
 HEADER = '#include "oneplus9r_runtime_diag.h"'
-STAGES = {
+BOOT_STAGES = {
     "INIT": "init_entered",
     "SELINUX": "selinux_init_rc",
     "DISPATCHER": "dispatcher_init_rc",
@@ -26,6 +26,18 @@ STAGES = {
     "MANAGER_FD": "manager_fd_install_rc",
     "MANAGER_INFO": "manager_get_info_rc",
 }
+KSUD_STAGES = {
+    "INIT_SECOND_STAGE": "init_second_stage_seen",
+    "INIT_RC_HOOK": "init_rc_hook_seen",
+    "INIT_RC_COMPLETE": "init_rc_append_seen",
+    "INIT_KSUD_EXEC": "init_ksud_exec_seen",
+    "BOOT_COMPLETED": "ksud_boot_completed_event_seen",
+    "SU_OPEN": "su_last_ksud_open_rc",
+    "SU_PROFILE": "su_last_profile_rc",
+    "SU_EXEC": "su_last_ksud_exec_rc",
+    "SU_FD": "su_last_session_fd_rc",
+}
+STAGES = BOOT_STAGES | KSUD_STAGES
 
 # Use an out-of-range errno as the marker for a stage that has not been reached.
 HEADER_CONTENT = """#ifndef ONEPLUS9R_RUNTIME_DIAG_H
@@ -55,7 +67,7 @@ atomic_t oneplus9r_diag[DIAG_COUNT] = {
 
 static int oneplus9r_diag_show(struct seq_file *m, void *unused)
 {
-    seq_puts(m, "fina_9r_diag_v4\\nnot_run=-4096\\n");
+    seq_puts(m, "fina_9r_diag_v5\\nnot_run=-4096\\n");
 """ + "".join(
     f'    seq_printf(m, "{name}=%d\\n", atomic_read(&oneplus9r_diag[DIAG_{key}]));\n'
     for key, name in STAGES.items()
@@ -71,10 +83,15 @@ static void oneplus9r_diag_log(struct work_struct *work)
 {
     static unsigned int sample;
 
-    pr_warn("fina_9r_diag_v4 sample=%u not_run=-4096 "
-""" + "".join(f'            "{name}=%d "\n' for name in STAGES.values()) + """            "\\n", ++sample,
-""" + ",\n".join(f"            atomic_read(&oneplus9r_diag[DIAG_{key}])" for key in STAGES) + """);
-    if (sample < 20)
+    ++sample;
+""" + "".join(
+    f'    pr_warn("fina_9r_diag_v5 {group} sample=%u not_run=-4096 "\n'
+    + "".join(f'            "{name}=%d "\n' for name in fields.values())
+    + '            "\\n", sample,\n'
+    + ",\n".join(f"            atomic_read(&oneplus9r_diag[DIAG_{key}])" for key in fields)
+    + ");\n"
+    for group, fields in (("boot", BOOT_STAGES), ("ksud", KSUD_STAGES))
+) + """    if (sample < 20)
         schedule_delayed_work(&oneplus9r_diag_work, 30 * HZ);
 }
 """
@@ -135,6 +152,38 @@ EDITS = {
     "runtime/boot_event.c": [
         ('    pr_info("on_post_fs_data!\\n");',
          '    pr_info("on_post_fs_data!\\n");\n    oneplus9r_diag_set(DIAG_POST_FS, 1);'),
+        ('    pr_info("on_boot_completed!\\n");',
+         '    pr_info("on_boot_completed!\\n");\n    oneplus9r_diag_set(DIAG_BOOT_COMPLETED, 1);'),
+    ],
+    "runtime/ksud_integration.c": [
+        ('            pr_info("/system/bin/init second_stage executed\\n");',
+         '            oneplus9r_diag_set(DIAG_INIT_SECOND_STAGE, 1);\n'
+         '            pr_info("/system/bin/init second_stage executed\\n");'),
+        ('    rc_hooked = true;',
+         '    rc_hooked = true;\n    oneplus9r_diag_set(DIAG_INIT_RC_HOOK, 1);'),
+        ('        if (ksu_rc_pos == ksu_rc_len)\n            pr_info("read_proxy: static append done\\n");',
+         '        if (ksu_rc_pos == ksu_rc_len) {\n'
+         '            oneplus9r_diag_set(DIAG_INIT_RC_COMPLETE, 1);\n'
+         '            pr_info("read_proxy: static append done\\n");\n        }'),
+        ('        if (ksu_rc_pos == ksu_rc_len) {\n            pr_info("read_iter_proxy: static append done\\n");',
+         '        if (ksu_rc_pos == ksu_rc_len) {\n'
+         '            oneplus9r_diag_set(DIAG_INIT_RC_COMPLETE, 1);\n'
+         '            pr_info("read_iter_proxy: static append done\\n");'),
+    ],
+    "hook/syscall_event_bridge.c": [
+        ('        escape_to_root_for_init();',
+         '        oneplus9r_diag_set(DIAG_INIT_KSUD_EXEC, 1);\n        escape_to_root_for_init();'),
+    ],
+    "feature/sucompat.c": [
+        ('    if (IS_ERR(ksud_file)) {\n',
+         '    oneplus9r_diag_set(DIAG_SU_OPEN, IS_ERR(ksud_file) ? PTR_ERR(ksud_file) : 0);\n'
+         '    if (IS_ERR(ksud_file)) {\n'),
+        ('    ret = escape_with_root_profile();\n',
+         '    ret = escape_with_root_profile();\n    oneplus9r_diag_set(DIAG_SU_PROFILE, ret);\n'),
+        ('    ret = ksu_syscall_table[__NR_execveat](regs);\n',
+         '    ret = ksu_syscall_table[__NR_execveat](regs);\n    oneplus9r_diag_set(DIAG_SU_EXEC, ret);\n'),
+        ('        su_fd = ksu_install_su_fd();\n',
+         '        su_fd = ksu_install_su_fd();\n        oneplus9r_diag_set(DIAG_SU_FD, su_fd < 0 ? su_fd : 0);\n'),
     ],
     "manager/pkg_observer.c": [
         ('        pr_info("packages.list detected: %d\\n", mask);',

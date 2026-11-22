@@ -13,7 +13,7 @@ Based on the build flow of [NonGKI_Kernel_Build_2nd](https://github.com/JackA1lt
 | Device | OnePlus 9R (`lemonades`) |
 | Kernel source | [wcedla/android_kernel_oneplus_sm8250_los](https://github.com/wcedla/android_kernel_oneplus_sm8250_los) (`lineage-22.1`) |
 | Kernel version | 4.19.325 |
-| ROM target | LineageOS 22.1 / Android 15 |
+| ROM used for device testing | ColorOS 15 port (`lineage-22.1` is the kernel source branch) |
 | Root | [FinaSU](https://github.com/LyraVoid/FinaSU) `v1.6.5` (built-in, `CONFIG_KSU=y`) |
 | Hook | Tracepoint |
 | SUSFS | v2.4.0 |
@@ -32,9 +32,15 @@ Builds run on GitHub Actions (`ubuntu-24.04`), including the weekly Friday 18:00
 
 - FinaSU is compiled into the image (`CONFIG_KSU=y`). The manager signing certificate is aligned automatically through `KSU_EXPECTED_SIZE2 / KSU_EXPECTED_HASH2 / KSU_SECOND_SIGNATURE_RELEASE=1`.
 - SUSFS applies the generic 4.19 patch plus [`Patches/OnePlus9R/susfs_fixed.patch`](Patches/OnePlus9R/susfs_fixed.patch).
-- The AnyKernel3 installer checks for `lemonades`. A successful build is not proof that the kernel boots; boot compatibility has not been verified on hardware.
+- The AnyKernel3 installer checks for `lemonades`. This ZIP does not install or update `/data/adb/ksud`; flashing the kernel alone does not complete the root installation.
 - When a build fails, rejects and error logs are uploaded as artifacts (`BUILD_DEBUGGER=true`).
-- Flash at your own risk; back up your boot partition first.
+- Before flashing, confirm TWRP can restore a Boot backup for the current slot, and keep the original ROM's `boot.img` if available.
+
+## Device validation
+
+The kernel has booted on a OnePlus 9R (LE2100). With the [v4 test build](https://github.com/muling0721/NonGKI_FinaSU_OnePlus9R/actions/runs/44991678924), the Manager read driver version `33213`; that fix is still on the test branch. **A working root shell and SUSFS behavior have not been verified.**
+
+The v4 report shows that the Manager's `ksud` child did not obtain a driver FD and its fallback to `su` on `PATH` failed. The report does not establish whether `/data/adb/ksud` exists. The FinaSU v1.6.5 [built-in installation guide](https://github.com/LyraVoid/FinaSU/blob/f96445f9/website/docs/guide/install/built-in.md) also notes that AnyKernel3 does not automatically update `ksud`. A first-install path for this device that does not depend on existing root has not been verified.
 
 ## Credits
 

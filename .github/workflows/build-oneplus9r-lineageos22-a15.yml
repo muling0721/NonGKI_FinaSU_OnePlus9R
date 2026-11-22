@@ -1,4 +1,4 @@
-name: OnePlus 9R setresuid test (seccomp enabled)
+name: OnePlus 9R ksud diagnostics (seccomp enabled)
 
 permissions:
   contents: read
@@ -95,8 +95,8 @@ env:
 
 jobs:
   build-kernel:
-    name: OnePlus 9R (lemonades) - setresuid test
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/setresuid-9r'
+    name: OnePlus 9R (lemonades) - ksud diagnostics
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/test/ksud-diag-9r'
     runs-on: ubuntu-24.04
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
@@ -149,7 +149,7 @@ jobs:
         working-directory: device_kernel
         run: |
           python3 "$GITHUB_WORKSPACE/.github/scripts/oneplus9r_runtime_diag.py"
-          echo 'ROM_TEXT=lineageos22_a15-runtime-diag-v4-setresuid-test' >> "$GITHUB_ENV"
+          echo 'ROM_TEXT=lineageos22_a15-runtime-diag-v5-ksud-test' >> "$GITHUB_ENV"
 
       - name: 🪛 Extra Kernel Options
         run: |
@@ -192,7 +192,7 @@ jobs:
               exit 1
             fi
           done
-          printf 'Kernel release: `%s`\n\nTest only: FinaSU setresuid; seccomp and its filters enabled.\n' "$kernel_release" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Kernel release: `%s`\n\nTest only: v4 setresuid callback plus read-only ksud diagnostics. Seccomp, its filters, and SELinux enabled.\n' "$kernel_release" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 🔩 Pack Process
         uses: ./.github/workflows/pack-process
